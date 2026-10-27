@@ -29,6 +29,12 @@ jobs:
       - name: Install Windows cross compiler
         timeout-minutes: 8
         run: |
+          # The Azure mirror throttled the compiler download to about 110 KB/s
+          # on a hosted runner. Use Ubuntu's HTTPS mirror; APT still verifies
+          # the signed index and package hashes.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
       - name: Build MWEB and its Windows runtime
