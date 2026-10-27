@@ -104,6 +104,10 @@ try {
     }
 
     if ($Stage -in @('All', 'Build')) {
+        # Source preparation may run in parallel with the native build in CI.
+        # Never compile/package until its exact pin and every DLL hash match.
+        python scripts/windows/prepare_dependencies.py --verify-monero
+        if ($LASTEXITCODE) { throw 'Native Monero artifact verification failed.' }
         # The Windows PackageInfo implementation reads Dart defines, independent
         # of the executable version resource written by --build-name/--build-number.
         # Keep both sources consistent and give the fork its own application ID.

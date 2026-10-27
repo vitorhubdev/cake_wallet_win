@@ -14,6 +14,87 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  monero-native:
+    name: Build pinned Monero for Windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      MONERO_BUILD_JOBS: '2'
+      NUM_CORES: '2'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: monero-output
+        with:
+          path: build/windows-native/monero
+          key: windows-monero-33671871-v1-${{ hashFiles('scripts/windows/build_monero.sh') }}
+      - name: Make room for the isolated native toolchain
+        if: steps.monero-output.outputs.cache-hit != 'true'
+        run: |
+          # Only unused, preinstalled SDKs on this disposable Linux runner.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup
+          df -h .
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        if: steps.monero-output.outputs.cache-hit != 'true'
+        with:
+          go-version: '1.25.1'
+          cache: false
+      - name: Install native build tools
+        if: steps.monero-output.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y build-essential clang llvm git curl ca-certificates patch pkg-config autoconf automake libtool gperf bison flex texinfo python3 xz-utils unzip zip bzip2 file binutils cmake
+      - name: Prepare pinned Monero and dependency-builder sources
+        if: steps.monero-output.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          source_dir=build/windows-native-src/monero_c
+          git clone --filter=blob:none --no-checkout https://github.com/MrCyjaneK/monero_c.git "$source_dir"
+          git -C "$source_dir" checkout --detach 33671871de3d51696b66ffb3bd94f744e26974f6
+          git clone --filter=blob:none --no-checkout https://github.com/MrCyjaneK/simplybs.git "$source_dir/contrib/depends/simplybs"
+          git -C "$source_dir/contrib/depends/simplybs" checkout --detach 9b1e86953fde5827d903243fc230ad66d39b6de0
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: steps.monero-output.outputs.cache-hit != 'true'
+        id: monero-toolchain
+        with:
+          path: |
+            build/windows-native-src/monero_c/contrib/depends/simplybs/.buildlib/linux_amd64/built
+            build/windows-native-src/monero_c/contrib/depends/simplybs/.buildlib/source
+          key: monero-toolchain-linux-x64-9b1e8695-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: monero-toolchain-linux-x64-9b1e8695-v1-
+      - name: Compile the pinned Monero backend and matching runtimes
+        if: steps.monero-output.outputs.cache-hit != 'true'
+        id: monero-build
+        timeout-minutes: 260
+        run: bash scripts/windows/build_monero.sh
+      - name: Preserve completed toolchain packages, including after a build failure
+        if: ${{ !cancelled() && steps.monero-build.outcome != 'skipped' && steps.monero-build.outcome != '' }}
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            build/windows-native-src/monero_c/contrib/depends/simplybs/.buildlib/linux_amd64/built
+            build/windows-native-src/monero_c/contrib/depends/simplybs/.buildlib/source
+          key: ${{ steps.monero-toolchain.outputs.cache-primary-key }}
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: success() && steps.monero-output.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: build/windows-native/monero
+          key: ${{ steps.monero-output.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-monero-native
+          path: build/windows-native/monero/
+          if-no-files-found: error
+          retention-days: 14
+
   native:
     name: Build Windows native libraries
     runs-on: ubuntu-24.04
@@ -77,7 +158,7 @@ jobs:
 
           Windows Monero improvements: desktop navigation with sections initialized on first use; a persistent XMR connection panel with the current node and a manual node-management shortcut; responsive onboarding. Reconnection regression tests cover listener disposal, stale results and overlapping checks. Loopback socket tests cover direct HTTP probe deadlines and digest-client cleanup. Blockchain synchronization speed has not been benchmarked; experimental automatic node switching remains disabled.
 
-          Production Cake API keys are not included. This Windows profile does not include Zcash, Zano, Decred or bundled Tor. Builds are unsigned. Use a new empty wallet to verify your environment before using funds. This fork keeps its compatibility constants stable across updates; do not import another build's encrypted application directory.
+          Monero is compiled in Release mode from the exact pinned source revision used by the Dart bindings, with matching native checksums. Production Cake API keys are not included. This Windows profile does not include Wownero, Zcash, Zano, Decred or bundled Tor. Builds are unsigned. Use a new empty wallet to verify your environment before using funds. This fork keeps its compatibility constants stable across updates; do not import another build's encrypted application directory.
           NOTES
           gh release create "$tag" dist/*.zip dist/*-Setup.exe dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$BUILD_COMMIT" \
@@ -88,7 +169,10 @@ jobs:
     name: Build and verify Windows x64
     needs: native
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         shell: pwsh
@@ -121,7 +205,7 @@ jobs:
           key: windows-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
           restore-keys: windows-deps-v1-
       - name: Prepare checksum-pinned upstream dependencies
-        run: python scripts/windows/prepare_dependencies.py
+        run: python scripts/windows/prepare_dependencies.py --sources-only
       - name: Resolve Flutter dependencies and validate native MWEB
         run: ./scripts/windows/build.ps1 -Stage Configure -SkipPrepare -BuildNumber ${{ github.run_number }}
       - name: Preserve resolved dependencies before compilation and tests
@@ -143,8 +227,23 @@ jobs:
           restore-keys: windows-rust-v1-
       - name: Generate code and validate upgrade compatibility
         run: ./scripts/windows/build.ps1 -Stage Generate -BuildNumber ${{ github.run_number }}
+      - name: Wait for the parallel Monero native build
+        timeout-minutes: 305
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/windows/wait_for_monero.ps1 -Repository '${{ github.repository }}' -RunId ${{ github.run_id }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-monero-native
+          path: build/windows-native/monero
       - name: Compile release and bundle native runtimes
         run: ./scripts/windows/build.ps1 -Stage Build -BuildNumber ${{ github.run_number }}
+      - name: Verify MWEB with the final bundled threading runtime
+        run: |
+          $env:MWEB_NATIVE_TEST_LIBRARY = (Resolve-Path build/windows/x64/runner/Release/mweb.dll).Path
+          Push-Location cw_mweb
+          try { flutter test test/native/mweb_ffi_native_test.dart --reporter expanded }
+          finally { Pop-Location; Remove-Item Env:MWEB_NATIVE_TEST_LIBRARY }
       - name: Verify DLLs and launch the release executable
         run: ./scripts/windows/smoke_test.ps1
       - name: Create, store and reopen an offline Monero testnet wallet

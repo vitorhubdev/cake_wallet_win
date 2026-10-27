@@ -7,23 +7,20 @@ GET-only, bounded, verified before extraction, and cached by their SHA-256.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import tarfile
 import time
 import urllib.request
-import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "scripts/.cache/windows"
 DEPENDENCIES = {
-    "monero": (
-        "https://github.com/MrCyjaneK/monero_c/releases/download/v0.18.4.6-RC2/release-bundle.zip",
-        "94ae3d99f878d1e392b9c49d4c5431e4d0b7780c6177081df5369d05e68cea70",
-    ),
     "torch_dart": (
         "https://github.com/MrCyjaneK/torch_dart/releases/download/v1.0.17/torch_dart-v1.0.17.tar.gz",
         "d7ad0dbb63e1dee16a1d28f375d9e570ab82d77999a0e070111b694c7c8c371e",
@@ -34,6 +31,7 @@ DEPENDENCIES = {
     ),
 }
 BITBOX_COMMIT = "5a6e6dd388ef64003f86094af80d5453518b601d"
+MONERO_COMMIT = "33671871de3d51696b66ffb3bd94f744e26974f6"
 
 
 def sha256(path: Path) -> str:
@@ -85,22 +83,43 @@ def extract_sources(archive: Path, destination: Path) -> None:
                 shutil.copyfileobj(content, output)
 
 
-def main() -> None:
-    metadata = {}
+def verify_monero() -> dict:
+    # The last upstream DLL release predates this Dart wrapper and is rejected
+    # by the application's implementation checksum gate. Build the exact pin.
+    overrides_text = (ROOT / "pubspec_overrides.yaml").read_text(encoding="utf-8")
+    monero_pin = re.search(
+        r"(?m)^  monero:\n    git:\n      url: [^\n]+\n      ref: ([0-9a-f]{40})$",
+        overrides_text,
+    )
+    if monero_pin is None or monero_pin.group(1) != MONERO_COMMIT:
+        raise ValueError("Update the native Monero build when changing the Dart wrapper pin")
+    monero_dir = ROOT / "build/windows-native/monero"
+    monero_metadata = json.loads((monero_dir / "native-build-info.json").read_text(encoding="utf-8"))
+    if monero_metadata.get("commit") != MONERO_COMMIT or monero_metadata.get("target") != "x86_64-w64-mingw32":
+        raise ValueError("The native Monero artifact does not match the pinned Windows build")
+    files = monero_metadata.get("files", {})
+    if not {"libmonero_wallet2_api_c.dll", "libwinpthread-1.dll"}.issubset(files):
+        raise ValueError("The native Monero artifact is incomplete")
+    if set(files) != {path.name for path in monero_dir.glob("*.dll")}:
+        raise ValueError("The Monero artifact contains unrecorded or missing DLLs")
+    for name, digest in files.items():
+        if Path(name).name != name or not name.endswith(".dll") or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("Invalid Monero artifact manifest entry")
+        if sha256(monero_dir / name) != digest:
+            raise ValueError(f"Native Monero artifact checksum mismatch: {name}")
+    print(f"Verified source-built Monero at {MONERO_COMMIT}", flush=True)
+    return monero_metadata
+
+
+def main(*, sources_only: bool = False) -> None:
+    # CI prepares Dart packages while the independent native job is compiling.
+    # build.ps1 always verifies the completed artifact again before compilation.
+    metadata = {} if sources_only else {"monero_c": verify_monero()}
     for name, (url, digest) in DEPENDENCIES.items():
         print(f"Preparing {name} (SHA-256 {digest})", flush=True)
         archive = download(url, digest)
         metadata[name] = {"url": url, "sha256": digest}
-        if name == "monero":
-            with zipfile.ZipFile(archive) as source:
-                for coin in ("monero", "wownero"):
-                    member = f"v0.18.4.6-RC2/x86_64-w64-mingw32/lib{coin}_wallet2_api_c.dll"
-                    output = ROOT / f"scripts/monero_c/release/{coin}/x86_64-w64-mingw32_libwallet2_api_c.dll"
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    with source.open(member) as content, output.open("wb") as handle:
-                        shutil.copyfileobj(content, handle)
-        else:
-            extract_sources(archive, ROOT / "scripts" / name)
+        extract_sources(archive, ROOT / "scripts" / name)
 
     bitbox = ROOT / "scripts/bitbox_flutter"
     if not (bitbox / ".git").exists():
@@ -122,9 +141,20 @@ def main() -> None:
     pthread = native / "libwinpthread-1.dll"
     if not (native / "mweb.dll").is_file() or not pthread.is_file():
         raise FileNotFoundError("Build/download the windows-native artifact before preparing dependencies")
-    shutil.copy2(pthread, ROOT / "scripts/monero_c/release/monero/x86_64-w64-mingw32_libwinpthread-1.dll")
     (native.parent / "dependency-manifest.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--sources-only", action="store_true", help="Prepare package sources while the native Monero job runs")
+    modes.add_argument("--verify-monero", action="store_true", help="Verify the native artifact and record it in the dependency manifest")
+    args = parser.parse_args()
+    if args.verify_monero:
+        native_metadata = verify_monero()
+        manifest = ROOT / "build/windows-native/dependency-manifest.json"
+        metadata = json.loads(manifest.read_text(encoding="utf-8"))
+        metadata["monero_c"] = native_metadata
+        manifest.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    else:
+        main(sources_only=args.sources_only)

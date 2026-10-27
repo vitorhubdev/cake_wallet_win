@@ -28,7 +28,7 @@ Não é um build ARM64 e não possui assinatura digital da Cake Labs. Os arquivo
 `SHA256SUMS.txt`, `build-info.json`, `build-pubspec.lock` e
 `dependency-manifest.json` identificam o pacote e seus insumos.
 
-Para conferir o ZIP no PowerShell:
+Para conferir o instalador no PowerShell:
 
 ```powershell
 Get-FileHash .\CakeWallet-Windows-x64-6.5.0-N-Setup.exe -Algorithm SHA256
@@ -65,9 +65,18 @@ Envie alterações de código para `dev` ou `windows-ci`, ou use **Windows x64 �
 Run workflow**. Não são necessários os secrets comerciais nem os servidores
 privados da Cake Labs.
 
-O job Linux compila a biblioteca MWEB para Windows. O job Windows prepara as
-dependências, gera o código, executa testes, compila o app e reúne as bibliotecas
-necessárias. Os downloads nativos pré-compilados têm SHA-256 fixado e verificado.
+Os jobs Linux compilam MWEB e Monero para Windows. O Monero usa exatamente o
+commit das bindings Dart, com os checksums nativos conferidos, em modo Release.
+A receita original da toolchain é preservada; somente a configuração de
+compilação do wrapper muda de Debug para Release. O manifesto registra essa
+alteração e os hashes dos scripts. O antigo DLL pré-compilado do upstream não
+é compatível com essa revisão e não é usado.
+
+Enquanto o Monero compila, o job Windows prepara as dependências, gera o código
+e executa testes. Ele aguarda a biblioteca correta antes de compilar o app e
+reunir seus runtimes. Os pacotes baixados têm SHA-256 fixado e verificado.
+A primeira compilação nativa pode demorar bastante; o CI armazena em cache a
+toolchain e a biblioteca pronta para reutilização nas execuções seguintes.
 
 Antes de publicar, o workflow exige:
 
@@ -76,6 +85,7 @@ Antes de publicar, o workflow exige:
 - Regressões de reconexão, descarte de listeners e resultados antigos, além de
   sondagens Monero e autenticação digest contra sockets locais sem nós externos.
 - Carregamento das DLLs e abertura do executável de release.
+- Repetição dos testes MWEB usando o runtime de threads do pacote final.
 - Criação, gravação, fechamento e reabertura de uma carteira Monero **testnet**
   descartável, sem daemon, conexão de rede ou fundos; também rejeita senha errada.
 - Abertura da tela inicial real, sem tela de erro, e verificação da pasta de
@@ -91,7 +101,7 @@ fundos, hardware wallets ou funcionamento de serviços comerciais.
 
 A configuração segue o perfil Windows do projeto original: Monero,
 Bitcoin/Litecoin, redes EVM, Nano, Bitcoin Cash, Solana, Tron e Dogecoin.
-Zcash, Zano e Decred não são habilitados nesse perfil. A biblioteca MWEB é
+Wownero, Zcash, Zano e Decred não são habilitados nesse perfil. A biblioteca MWEB é
 compilada e incluída, mas isso não equivale a validar todos os fluxos Litecoin
 na interface do Windows.
 
@@ -126,8 +136,10 @@ com uma carteira nova e vazia no seu próprio computador.
 
 Use as mesmas versões fixadas, PowerShell 7, Python 3.11+, Rust, LLVM, NuGet e
 Visual Studio com a carga **Desenvolvimento para desktop com C++**.
-Prepare o artefato nativo com `scripts/windows/build_mweb.sh` em Linux/WSL e
-coloque o resultado em `build/windows-native/` no Windows. Então execute:
+Prepare os artefatos nativos com `scripts/windows/build_mweb.sh` e
+`scripts/windows/build_monero.sh` em Linux/WSL, usando as ferramentas e versões
+de Go definidas no workflow. Coloque o resultado em `build/windows-native/` no
+Windows, incluindo os manifestos. Então execute:
 
 ```powershell
 ./scripts/windows/build.ps1 -Version 6.5.0 -BuildNumber 1

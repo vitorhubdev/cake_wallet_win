@@ -33,7 +33,7 @@ if ($output.Equals($bundle, [StringComparison]::OrdinalIgnoreCase) -or
 $requiredFiles = @(
     'CakeWallet.exe', 'flutter_windows.dll',
     'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
-    'libmonero_wallet2_api_c.dll', 'libwownero_wallet2_api_c.dll',
+    'libmonero_wallet2_api_c.dll',
     'libwinpthread-1.dll', 'mweb.dll',
     'data\icudtl.dat', 'data\app.so', 'data\flutter_assets\AssetManifest.bin',
     'LICENSE.md', 'build-info.json', 'build-pubspec.lock', 'dependency-manifest.json'

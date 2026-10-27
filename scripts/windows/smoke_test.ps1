@@ -4,7 +4,6 @@ param(
     [string]$DiagnosticsPath = 'build\windows-smoke',
     [string[]]$NativeLibraries = @(
         'libmonero_wallet2_api_c.dll',
-        'libwownero_wallet2_api_c.dll',
         'libwinpthread-1.dll',
         'mweb.dll'
     ),
