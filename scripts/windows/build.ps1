@@ -10,6 +10,18 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+
+function Resolve-CachedFlutterDependencies {
+    # The root resolution has already fetched the pinned dependency set.
+    # Avoid fetching hundreds of Git refs again for every cw_* package.
+    try {
+        flutter pub get --offline
+    } catch {
+        Write-Warning 'The package needs an additional dependency; resolving it online.'
+        flutter pub get
+    }
+}
+
 Push-Location $root
 try {
     if (-not $IsWindows) { throw 'This script requires PowerShell 7 on Windows x64.' }
@@ -34,7 +46,7 @@ try {
         # Generate the MWEB ABI from the same header that produced mweb.dll.
         Push-Location cw_mweb
         try {
-            flutter pub get
+            Resolve-CachedFlutterDependencies
             dart run ffigen --config ffigen_config.windows.yaml
             $env:MWEB_NATIVE_TEST_LIBRARY = Join-Path $root 'build/windows-native/mweb/mweb.dll'
             flutter test test/native/mweb_ffi_native_test.dart --reporter expanded
@@ -47,11 +59,11 @@ try {
         foreach ($package in $packages) {
             Push-Location $package
             try {
-                flutter pub get
+                Resolve-CachedFlutterDependencies
                 dart run build_runner build --delete-conflicting-outputs
             } finally { Pop-Location }
         }
-        flutter pub get
+        Resolve-CachedFlutterDependencies
         dart run build_runner build --delete-conflicting-outputs
         dart run tool/generate_localization.dart
 

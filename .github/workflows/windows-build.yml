@@ -88,7 +88,7 @@ jobs:
     name: Build and verify Windows x64
     needs: native
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
     defaults:
       run:
         shell: pwsh
@@ -112,12 +112,11 @@ jobs:
           flutter-version: '3.41.9'
           channel: stable
           cache: true
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: dependencies
         with:
           path: |
             C:\pub-cache
-            C:\Users\runneradmin\.cargo\registry
-            C:\Users\runneradmin\.cargo\git
             scripts/.cache/windows
           key: windows-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
           restore-keys: windows-deps-v1-
@@ -125,6 +124,23 @@ jobs:
         run: python scripts/windows/prepare_dependencies.py
       - name: Resolve Flutter dependencies and validate native MWEB
         run: ./scripts/windows/build.ps1 -Stage Configure -SkipPrepare -BuildNumber ${{ github.run_number }}
+      - name: Preserve resolved dependencies before compilation and tests
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\pub-cache
+            scripts/.cache/windows
+          key: ${{ steps.dependencies.outputs.cache-primary-key }}
+      - name: Cache Rust dependency downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\Users\runneradmin\.cargo\registry
+            C:\Users\runneradmin\.cargo\git
+          key: windows-rust-v1-${{ hashFiles('pubspec_overrides.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: windows-rust-v1-
       - name: Generate code and validate upgrade compatibility
         run: ./scripts/windows/build.ps1 -Stage Generate -BuildNumber ${{ github.run_number }}
       - name: Compile release and bundle native runtimes
