@@ -1,72 +1,109 @@
-# Cake Wallet Windows x64 — community fork
+# Cake Wallet para Windows x64 — fork comunitário
 
-This is a community Windows build from `vitorhubdev/cake_wallet_win`, not an
-official Cake Labs Windows release. The CI uses Windows Server 2022, Visual
-Studio 2022, Flutter 3.41.9 and the upstream dependency pins.
+Este build é mantido em `vitorhubdev/cake_wallet_win`. É uma distribuição
+comunitária, independente dos lançamentos oficiais da Cake Labs. O CI utiliza
+Windows Server 2022, Visual Studio 2022, Flutter 3.41.9 e as dependências fixadas
+pelo projeto original.
 
-## Download and run
+## Baixar e executar
 
-Open **Actions → Windows x64 → latest successful run → Artifacts →
-CakeWallet-Windows-x64**. Extract the artifact and then extract the portable
-`CakeWallet-Windows-x64-*.zip` into a writable folder. Keep **all** DLLs and the
-`data` folder beside `CakeWallet.exe`. Do not copy just the executable.
+Abra [Releases](https://github.com/vitorhubdev/cake_wallet_win/releases) e baixe o
+ZIP da versão Windows desejada. A publicação acontece somente quando todos os
+checks obrigatórios do workflow passam.
 
-The bundle targets 64-bit Windows 10/11 on Intel/AMD. It is unsigned. Its
-`SHA256SUMS.txt`, `build-info.json`, `build-pubspec.lock` and
-`dependency-manifest.json` identify the build and inputs. Compare the ZIP hash
-using PowerShell `Get-FileHash <file.zip> -Algorithm SHA256`.
+1. Extraia **todo** o ZIP em uma pasta na qual você tenha permissão de escrita.
+2. Mantenha as DLLs e a pasta `data` junto de `CakeWallet.exe`.
+3. Execute `CakeWallet.exe`. Não copie apenas o executável para outra pasta.
 
-## Build in GitHub Actions
+O pacote é destinado a Windows 10/11 de 64 bits, em processadores Intel/AMD.
+Não é um build ARM64 e não possui assinatura digital da Cake Labs. Os arquivos
+`SHA256SUMS.txt`, `build-info.json`, `build-pubspec.lock` e
+`dependency-manifest.json` identificam o pacote e seus insumos.
 
-Push code to `dev` or `windows-ci`, or run **Windows x64 → Run workflow**.
-No Cake Labs repository secrets or private build runners are required. The
-Linux job cross-compiles MWEB; the Windows job generates code, builds the app,
-bundles the native runtimes and runs the launch checks before uploading it.
+Para conferir o ZIP no PowerShell:
 
-The portable archive is published only if the required checks pass. Logs and
-launch diagnostics are separate artifacts. A successful build/launch does not
-by itself establish synchronization, recovery, sending, hardware wallet or
-commercial-service functionality.
+```powershell
+Get-FileHash .\CakeWallet-Windows-x64-6.5.0-N.zip -Algorithm SHA256
+```
 
-## Scope and service limitations
+Substitua `N` pelo número do build e compare o resultado com `SHA256SUMS.txt`.
+Os artefatos também ficam em **Actions → Windows x64 → execução aprovada →
+Artifacts → CakeWallet-Windows-x64**. Nesse caso, extraia o arquivo de artefatos
+e depois o ZIP portátil que ele contém.
 
-The currency configuration follows the upstream Windows script: Monero,
-Bitcoin/Litecoin, EVM chains, Nano, Bitcoin Cash, Solana, Tron and Dogecoin.
-Zcash, Zano and Decred are not enabled in this Windows profile. MWEB is built
-from source and included instead of leaving its Windows DLL missing.
+## Compilar pelo GitHub Actions
 
-Production service credentials belonging to Cake Labs are not included.
-Integrations requiring those credentials (for example some swaps, buy/sell,
-fiat quotes, WalletConnect and Lightning services) may be unavailable. The
-bundled Torch package does not supply a Windows Tor library, and the pinned
-BitBox Windows implementation is incomplete; do not assume those features
-work merely because they appear in upstream documentation.
+Envie alterações de código para `dev` ou `windows-ci`, ou use **Windows x64 →
+Run workflow**. Não são necessários os secrets comerciais nem os servidores
+privados da Cake Labs.
 
-## Upgrades and data compatibility
+O job Linux compila a biblioteca MWEB para Windows. O job Windows prepara as
+dependências, gera o código, executa testes, compila o app e reúne as bibliotecas
+necessárias. Os downloads nativos pré-compilados têm SHA-256 fixado e verificado.
 
-`tool/configure_windows_secrets.dart` supplies fixed, public compatibility
-constants specific to this fork. They are compiled into the app and are not
-wallet seeds or API credentials. Do not regenerate them for each build:
-changing them can prevent an update from reading existing PINs, encrypted
-wallet passwords and backups. Real credentials continue to use the upstream
-Windows secure storage implementation.
+Antes de publicar, o workflow exige:
 
-This fork does not claim file/backup compatibility with builds made with
-different constants, including official Cake binaries. Keep the recovery
-phrase securely before migrating between distinct builds. Validate creation,
-closing/reopening and recovery with a new, empty wallet before using funds.
+- Testes nativos de geração de endereços e liberação de memória do MWEB.
+- Testes de estabilidade das constantes de compatibilidade entre builds.
+- Carregamento das DLLs e abertura do executável de release.
+- Criação, gravação, fechamento e reabertura de uma carteira Monero **testnet**
+  descartável, sem daemon, conexão de rede ou fundos; também rejeita senha errada.
+- Abertura da tela inicial real, sem tela de erro, e verificação da pasta de
+  dados, do banco e dos metadados de versão.
 
-## Local build
+Os logs e as imagens de diagnóstico ficam em artefatos separados. Esses checks
+não comprovam sincronização em mainnet, recuperação de todas as moedas, envio de
+fundos, hardware wallets ou funcionamento de serviços comerciais.
 
-Use the same pinned tool versions, PowerShell 7, Python 3.11+, Rust, LLVM,
-Visual Studio's Desktop development with C++ workload, and NuGet. Prepare the
-`windows-native` artifact with `scripts/windows/build_mweb.sh` on Linux/WSL,
-then place it under `build/windows-native/` on Windows and run:
+## Moedas e integrações
+
+A configuração segue o perfil Windows do projeto original: Monero,
+Bitcoin/Litecoin, redes EVM, Nano, Bitcoin Cash, Solana, Tron e Dogecoin.
+Zcash, Zano e Decred não são habilitados nesse perfil. A biblioteca MWEB é
+compilada e incluída, mas isso não equivale a validar todos os fluxos Litecoin
+na interface do Windows.
+
+Este fork não contém chaves de produção pertencentes à Cake Labs. Integrações
+que exigem essas credenciais — como determinados provedores de troca,
+compra/venda, cotações, WalletConnect e Lightning — podem ficar indisponíveis.
+O pacote Torch fixado pelo projeto não fornece uma biblioteca Tor para Windows.
+A implementação Windows de BitBox está incompleta e a interface upstream já a
+marca como indisponível. Não presuma que todos os recursos das versões móveis
+estão presentes aqui.
+
+## Dados, atualizações e compatibilidade
+
+A pasta nativa deste fork é `%APPDATA%\vitorhubdev\Cake Wallet Windows`.
+O prefixo das credenciais legadas também é exclusivo do fork. Mantenha esses
+identificadores estáveis para que futuras versões encontrem os mesmos dados,
+sem misturar informações de outras variantes do Cake Wallet.
+
+`tool/configure_windows_secrets.dart` define constantes públicas e estáveis de
+compatibilidade deste fork. Elas fazem parte do binário; não são seeds de
+carteiras nem credenciais de API. **Não as regenere a cada build:** alterá-las
+pode impedir a leitura de PINs, senhas cifradas, backups e grupos já existentes.
+O armazenamento seguro Windows original, com DPAPI, permanece habilitado.
+
+Não há promessa de compatibilidade de pastas ou backups cifrados com builds
+que utilizam outras constantes, inclusive binários oficiais da Cake.
+Guarde a frase de recuperação com segurança antes de migrar entre variantes.
+Antes de utilizar fundos, valide criação, fechamento/reabertura e recuperação
+com uma carteira nova e vazia no seu próprio computador.
+
+## Compilar localmente
+
+Use as mesmas versões fixadas, PowerShell 7, Python 3.11+, Rust, LLVM, NuGet e
+Visual Studio com a carga **Desenvolvimento para desktop com C++**.
+Prepare o artefato nativo com `scripts/windows/build_mweb.sh` em Linux/WSL e
+coloque o resultado em `build/windows-native/` no Windows. Então execute:
 
 ```powershell
 ./scripts/windows/build.ps1 -Version 6.5.0 -BuildNumber 1
 ```
 
-Use a fresh Windows CI runner for `smoke_test.ps1`; it intentionally refuses
-to run its startup check in a personal profile. Never provide real wallet
-seeds to CI. The old `cakewallet.bat` is superseded by the PowerShell build.
+O parâmetro `-Stage` permite executar separadamente `Configure`, `Generate` e
+`Build`; por padrão, o script executa todas as etapas. O antigo `cakewallet.bat`
+foi substituído por esse fluxo PowerShell.
+
+Use um runner Windows descartável do GitHub para `smoke_test.ps1`. O script
+recusa o teste de abertura em um perfil pessoal. Nunca forneça seeds reais ao CI.

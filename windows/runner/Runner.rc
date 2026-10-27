@@ -89,13 +89,15 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.cakewallet.cake_wallet" "\0"
-            VALUE "FileDescription", "Cake Wallet" "\0"
+            // These names also select the Windows application-data directory.
+            // Keep them stable so updates reopen this fork's existing data.
+            VALUE "CompanyName", "vitorhubdev" "\0"
+            VALUE "FileDescription", "Cake Wallet Windows (community fork)" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "Cake Wallet" "\0"
+            VALUE "InternalName", "CakeWallet" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2023 Cake Wallet. All rights reserved." "\0"
-            VALUE "OriginalFilename", "Cake Wallet.exe" "\0"
-            VALUE "ProductName", "Cake Wallet" "\0"
+            VALUE "OriginalFilename", "CakeWallet.exe" "\0"
+            VALUE "ProductName", "Cake Wallet Windows" "\0"
             VALUE "ProductVersion",  VERSION_AS_STRING "\0"
         END
     END

@@ -14,7 +14,23 @@
 
 </div>
 
-# Cake Wallet
+# Cake Wallet — build comunitário para Windows
+
+Este fork prepara uma versão **Windows x64**, com compilação e testes pelo GitHub
+Actions. É uma distribuição comunitária, independente dos lançamentos oficiais
+da Cake Labs.
+
+- [Downloads do Windows](https://github.com/vitorhubdev/cake_wallet_win/releases)
+- [Compilações e resultados dos testes](https://github.com/vitorhubdev/cake_wallet_win/actions/workflows/windows-build.yml)
+- [Como executar, compilar, atualizar e quais são as limitações](docs/builds/WINDOWS_FORK.md)
+
+Extraia o ZIP inteiro e execute `CakeWallet.exe`, mantendo as DLLs e a pasta
+`data` juntas. As integrações que dependem de chaves comerciais da Cake não
+estão incluídas. O CI valida carregamento nativo, abertura do app e operações
+offline com uma carteira de testnet descartável; sincronização e transações
+reais precisam de validação própria.
+
+## Projeto original: Cake Wallet
 
 [Cake Wallet](https://cakewallet.com) is an open-source, non-custodial, and private multi-currency crypto wallet for Android, iOS, macOS, and Linux.
 

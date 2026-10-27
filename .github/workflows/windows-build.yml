@@ -39,6 +39,42 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  publish:
+    name: Publish verified Windows download
+    needs: windows
+    if: github.repository == 'vitorhubdev/cake_wallet_win'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: CakeWallet-Windows-x64
+          path: dist
+      - name: Publish the tested bundle and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_COMMIT: ${{ github.sha }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          tag="windows-6.5.0-${BUILD_NUMBER}-${BUILD_ATTEMPT}"
+          cat > release-notes.md <<'NOTES'
+          Community Windows x64 build of Cake Wallet. This is not an official Cake Labs release.
+
+          Download and extract the ZIP completely, then run CakeWallet.exe. Keep all DLLs and the data directory together. SHA256SUMS.txt verifies the ZIP; build-info.json identifies the source and toolchain.
+
+          Required CI gates: native MWEB string-ownership regression tests; stable upgrade configuration tests; packaged DLL loading and release-process launch; offline Monero TESTNET wallet creation, storage, incorrect-password rejection and reopening; real application onboarding. No real funds are used. Mainnet sync, payments, hardware wallets and commercial integrations are not established by these checks.
+
+          Production Cake API keys are not included. This Windows profile does not include Zcash, Zano, Decred or bundled Tor. Builds are unsigned. Use a new empty wallet to verify your environment before using funds. This fork keeps its compatibility constants stable across updates; do not import another build's encrypted application directory.
+          NOTES
+          gh release create "$tag" dist/*.zip dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$BUILD_COMMIT" \
+            --title "Cake Wallet Windows x64 — 6.5.0 build $BUILD_NUMBER" \
+            --notes-file release-notes.md --prerelease
+
   windows:
     name: Build and verify Windows x64
     needs: native
@@ -76,8 +112,14 @@ jobs:
             scripts/.cache/windows
           key: windows-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
           restore-keys: windows-deps-v1-
-      - name: Prepare and build
-        run: ./scripts/windows/build.ps1 -BuildNumber ${{ github.run_number }}
+      - name: Prepare checksum-pinned upstream dependencies
+        run: python scripts/windows/prepare_dependencies.py
+      - name: Resolve Flutter dependencies and validate native MWEB
+        run: ./scripts/windows/build.ps1 -Stage Configure -SkipPrepare -BuildNumber ${{ github.run_number }}
+      - name: Generate code and validate upgrade compatibility
+        run: ./scripts/windows/build.ps1 -Stage Generate -BuildNumber ${{ github.run_number }}
+      - name: Compile release and bundle native runtimes
+        run: ./scripts/windows/build.ps1 -Stage Build -BuildNumber ${{ github.run_number }}
       - name: Verify DLLs and launch the release executable
         run: ./scripts/windows/smoke_test.ps1
       - name: Create, store and reopen an offline Monero testnet wallet
@@ -85,7 +127,7 @@ jobs:
       - name: Verify real application onboarding
         run: |
           $env:CAKE_WALLET_DIR = Join-Path $env:RUNNER_TEMP ('cw-startup-' + [Guid]::NewGuid())
-          flutter test integration_test/windows_startup_test.dart -d windows --timeout 3m --reporter expanded
+          flutter test integration_test/windows_startup_test.dart -d windows --timeout 3m --reporter expanded --dart-define-from-file=build/windows-build-env.json
       - name: Package the complete portable bundle
         run: |
           $ErrorActionPreference = 'Stop'

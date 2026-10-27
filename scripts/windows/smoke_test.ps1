@@ -105,13 +105,10 @@ try {
         }
     }
 
-    # Also resolve the plugin DLLs that the Flutter engine loads at startup.
+    # Resolve every bundled DLL, including Rust/SQLite libraries which may be
+    # loaded lazily only when the user opens a particular wallet type.
     $libraries = @($NativeLibraries) + @(
-        Get-ChildItem -LiteralPath $bundle -Filter '*_plugin.dll' -File |
-            Select-Object -ExpandProperty Name
-    ) + @(
-        # sqlite3's native-assets hook may choose a version-specific filename.
-        Get-ChildItem -LiteralPath $bundle -Filter '*sqlite*.dll' -File |
+        Get-ChildItem -LiteralPath $bundle -Filter '*.dll' -File |
             Select-Object -ExpandProperty Name
     )
     $libraries = @($libraries | Sort-Object -Unique)

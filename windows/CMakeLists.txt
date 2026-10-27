@@ -6,6 +6,12 @@ project(cake_wallet LANGUAGES CXX)
 # the on-disk name of your application.
 set(BINARY_NAME "CakeWallet")
 
+# Keep Windows secure-storage legacy credential keys separate from other
+# Cake Wallet builds. The plugin uses this prefix instead of BINARY_NAME.
+# This namespace, like the public Windows compatibility profile, must stay
+# stable between releases of this fork.
+set(STORAGE_PREFIX "vitorhubdev_cake_wallet_win")
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)

@@ -5,11 +5,14 @@ import 'package:cake_wallet/generated/i18n.dart';
 import 'package:cake_wallet/main.dart' as app;
 import 'package:cake_wallet/src/screens/welcome/create_pin_welcome_page.dart';
 import 'package:cake_wallet/src/widgets/primary_button.dart';
+import 'package:cake_wallet/utils/package_info.dart' as cake_package;
 import 'package:cw_core/db/sqlite.dart' as wallet_db;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:package_info_plus/package_info_plus.dart' as executable_package;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 // This target uses the real application, assets, plugins, database, and secure
 // storage. It does not create a wallet or use a seed, node, or payment fixture.
@@ -32,6 +35,27 @@ void main() {
       } else {
         profile.createSync(recursive: true);
       }
+
+      // This is the native Windows application directory, independent of
+      // CAKE_WALLET_DIR. DPAPI secure storage and preferences use this namespace.
+      final supportDirectory = await getApplicationSupportDirectory();
+      expect(p.basename(supportDirectory.path), 'Cake Wallet Windows');
+      expect(p.basename(p.dirname(supportDirectory.path)), 'vitorhubdev');
+
+      // Check both the Dart environment and the executable resource. Setting
+      // Flutter's --build-name alone used to leave the app showing 1.0.0.
+      const expectedVersion = String.fromEnvironment('CW_WIN_APP_VERSION');
+      const expectedBuildNumber = String.fromEnvironment('CW_WIN_APP_BUILD_NUMBER');
+      expect(expectedVersion, matches(RegExp(r'^\d+\.\d+\.\d+$')));
+      expect(expectedBuildNumber, matches(RegExp(r'^[1-9]\d*$')));
+      final displayedPackage = await cake_package.PackageInfo.fromPlatform();
+      final executablePackage = await executable_package.PackageInfo.fromPlatform();
+      expect(displayedPackage.appName, 'Cake Wallet Windows');
+      expect(displayedPackage.packageName, 'vitorhubdev.cake_wallet_win');
+      expect(displayedPackage.version, expectedVersion);
+      expect(displayedPackage.buildNumber, expectedBuildNumber);
+      expect(executablePackage.version, expectedVersion);
+      expect(executablePackage.buildNumber, expectedBuildNumber);
 
       final frameworkErrorHandler = FlutterError.onError;
       final platformErrorHandler = WidgetsBinding.instance.platformDispatcher.onError;

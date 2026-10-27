@@ -1,11 +1,39 @@
-name: Lint
+name: Build script checks
 
 on: [pull_request]
+
+permissions:
+  contents: read
 
 defaults:
   run:
     shell: bash
 jobs:
+  windows-build-scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Check Python and Bash syntax
+        run: |
+          python3 -m py_compile scripts/windows/prepare_dependencies.py
+          bash -n scripts/windows/build_mweb.sh
+          git diff --check HEAD^ HEAD
+      - name: Check PowerShell syntax without executing build scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in Get-ChildItem scripts/windows -Filter '*.ps1') {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              throw ($errors | Out-String)
+            }
+          }
 #  lint:
 #    runs-on: [Linux, amd64, android]
 #    container:
