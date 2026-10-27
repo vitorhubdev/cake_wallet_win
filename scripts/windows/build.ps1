@@ -22,6 +22,25 @@ function Resolve-CachedFlutterDependencies {
     }
 }
 
+function Get-VisualCppRuntimeDirectory {
+    param([Parameter(Mandatory)][string]$RedistRoot)
+
+    # New Visual Studio images also use a "v143" directory. Folder names are
+    # not versions; inspect the runtime DLL itself and keep only complete x64 sets.
+    $candidates = Get-ChildItem -LiteralPath $RedistRoot -Directory |
+        ForEach-Object { Join-Path $_.FullName 'x64/Microsoft.VC143.CRT' } |
+        Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_ 'vcruntime140.dll') -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $_ 'vcruntime140_1.dll') -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $_ 'msvcp140.dll') -PathType Leaf)
+        }
+    $selected = $candidates |
+        Sort-Object { (Get-Item -LiteralPath (Join-Path $_ 'vcruntime140.dll')).VersionInfo.FileVersionRaw } -Descending |
+        Select-Object -First 1
+    if (-not $selected) { throw 'A complete Visual C++ x64 redistributable directory was not found.' }
+    return $selected
+}
+
 Push-Location $root
 try {
     if (-not $IsWindows) { throw 'This script requires PowerShell 7 on Windows x64.' }
@@ -102,11 +121,7 @@ try {
         $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
         $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
         if (-not $vs) { throw 'Visual Studio C++ tools were not found.' }
-        $redist = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Directory |
-            Sort-Object { [version]$_.Name } -Descending |
-            ForEach-Object { Join-Path $_.FullName 'x64/Microsoft.VC143.CRT' } |
-            Where-Object { Test-Path $_ } | Select-Object -First 1
-        if (-not $redist) { throw 'The Visual C++ x64 redistributable directory was not found.' }
+        $redist = Get-VisualCppRuntimeDirectory -RedistRoot (Join-Path $vs 'VC/Redist/MSVC')
         Copy-Item (Join-Path $redist '*.dll') $release -Force
         Copy-Item LICENSE.md $release
         Copy-Item build/windows-native/dependency-manifest.json $release

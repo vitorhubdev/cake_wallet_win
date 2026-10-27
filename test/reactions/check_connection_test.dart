@@ -72,6 +72,7 @@ void main() {
     when(() => wallet.syncStatus).thenAnswer((_) => status);
     when(() => wallet.syncStatus = any()).thenAnswer((invocation) {
       status = invocation.positionalArguments.single as SyncStatus;
+      return status;
     });
     when(() => wallet.connectToNode(node: any(named: 'node'))).thenAnswer((_) async {
       status = ConnectedSyncStatus();

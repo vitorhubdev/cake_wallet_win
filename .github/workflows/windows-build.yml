@@ -71,15 +71,15 @@ jobs:
           cat > release-notes.md <<'NOTES'
           Community Windows x64 build of Cake Wallet. This is not an official Cake Labs release.
 
-          Download and extract the ZIP completely, then run CakeWallet.exe. Keep all DLLs and the data directory together. SHA256SUMS.txt verifies the ZIP; build-info.json identifies the source and toolchain.
+          Download the Setup.exe installer to install Cake Wallet Windows for your Windows user. It includes the application and its required DLLs. A portable ZIP is also available: extract it completely and run CakeWallet.exe. SHA256SUMS.txt verifies both downloads; build-info.json identifies the source and toolchain.
 
-          Required CI gates: native MWEB string-ownership regression tests; stable upgrade configuration tests; packaged DLL loading and release-process launch; offline Monero TESTNET wallet creation, storage, incorrect-password rejection and reopening; real application onboarding. No real funds are used. Mainnet sync, payments, hardware wallets and commercial integrations are not established by these checks.
+          Required CI gates: native MWEB string-ownership regression tests; stable upgrade configuration tests; packaged DLL loading and release-process launch; offline Monero TESTNET wallet creation, storage, incorrect-password rejection and reopening; real application onboarding; silent installation, installed DLL loading and launch, and uninstallation in a disposable runner. No real funds are used. Mainnet sync, payments, hardware wallets and commercial integrations are not established by these checks.
 
           Windows Monero improvements: desktop navigation with sections initialized on first use; a persistent XMR connection panel with the current node and a manual node-management shortcut; responsive onboarding. Reconnection regression tests cover listener disposal, stale results and overlapping checks. Loopback socket tests cover direct HTTP probe deadlines and digest-client cleanup. Blockchain synchronization speed has not been benchmarked; experimental automatic node switching remains disabled.
 
           Production Cake API keys are not included. This Windows profile does not include Zcash, Zano, Decred or bundled Tor. Builds are unsigned. Use a new empty wallet to verify your environment before using funds. This fork keeps its compatibility constants stable across updates; do not import another build's encrypted application directory.
           NOTES
-          gh release create "$tag" dist/*.zip dist/SHA256SUMS.txt \
+          gh release create "$tag" dist/*.zip dist/*-Setup.exe dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$BUILD_COMMIT" \
             --title "Cake Wallet Windows x64 — 6.5.0 build $BUILD_NUMBER" \
             --notes-file release-notes.md --prerelease
@@ -163,6 +163,15 @@ jobs:
           $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $name.zip" | Set-Content "dist/SHA256SUMS.txt" -Encoding ascii
           "## Windows build`n`nPortable bundle: $name.zip`n`nCommit: ${{ github.sha }}`n`nSHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
+      - name: Build the complete Windows installer
+        run: ./scripts/windows/package_installer.ps1 -Version 6.5.0 -BuildNumber ${{ github.run_number }}
+      - name: Verify installation, installed application and uninstallation
+        run: |
+          $name = 'CakeWallet-Windows-x64-6.5.0-${{ github.run_number }}-Setup.exe'
+          ./scripts/windows/install_smoke_test.ps1 -InstallerPath "dist/$name"
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name" | Add-Content "dist/SHA256SUMS.txt" -Encoding ascii
+          "`nInstaller: $name`n`nSHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CakeWallet-Windows-x64
@@ -176,6 +185,7 @@ jobs:
           name: windows-diagnostics
           path: |
             build/windows-smoke/
+            build/windows-install-smoke/
             build/integration_test/
             build/integration_test_screenshots/
           if-no-files-found: ignore

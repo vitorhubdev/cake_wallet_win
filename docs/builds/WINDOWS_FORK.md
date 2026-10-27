@@ -8,8 +8,16 @@ pelo projeto original.
 ## Baixar e executar
 
 Abra [Releases](https://github.com/vitorhubdev/cake_wallet_win/releases) e baixe o
-ZIP da versão Windows desejada. A publicação acontece somente quando todos os
-checks obrigatórios do workflow passam.
+arquivo **`CakeWallet-Windows-x64-6.5.0-N-Setup.exe`** da versão desejada. Execute
+o instalador para instalar o aplicativo e suas DLLs no seu usuário Windows.
+A publicação acontece somente quando todos os checks obrigatórios do workflow
+passam, incluindo instalação, abertura do programa instalado e desinstalação.
+
+O instalador usa uma pasta em `%LOCALAPPDATA%\Programs` e não exige instalação
+para todos os usuários. As carteiras ficam na pasta de dados descrita abaixo;
+a desinstalação não remove essa pasta de dados.
+
+O ZIP portátil também está disponível, caso prefira executar sem instalador:
 
 1. Extraia **todo** o ZIP em uma pasta na qual você tenha permissão de escrita.
 2. Mantenha as DLLs e a pasta `data` junto de `CakeWallet.exe`.
@@ -23,13 +31,14 @@ Não é um build ARM64 e não possui assinatura digital da Cake Labs. Os arquivo
 Para conferir o ZIP no PowerShell:
 
 ```powershell
-Get-FileHash .\CakeWallet-Windows-x64-6.5.0-N.zip -Algorithm SHA256
+Get-FileHash .\CakeWallet-Windows-x64-6.5.0-N-Setup.exe -Algorithm SHA256
 ```
 
 Substitua `N` pelo número do build e compare o resultado com `SHA256SUMS.txt`.
+O mesmo arquivo também contém o checksum do ZIP portátil.
 Os artefatos também ficam em **Actions → Windows x64 → execução aprovada →
 Artifacts → CakeWallet-Windows-x64**. Nesse caso, extraia o arquivo de artefatos
-e depois o ZIP portátil que ele contém.
+para acessar o instalador e o ZIP portátil que ele contém.
 
 ## Experiência Windows com foco em Monero
 
@@ -71,6 +80,8 @@ Antes de publicar, o workflow exige:
   descartável, sem daemon, conexão de rede ou fundos; também rejeita senha errada.
 - Abertura da tela inicial real, sem tela de erro, e verificação da pasta de
   dados, do banco e dos metadados de versão.
+- Instalação silenciosa em uma pasta temporária do runner, carregamento das
+  DLLs e abertura do executável instalado, além da desinstalação desse teste.
 
 Os logs e as imagens de diagnóstico ficam em artefatos separados. Esses checks
 não comprovam sincronização em mainnet, recuperação de todas as moedas, envio de
