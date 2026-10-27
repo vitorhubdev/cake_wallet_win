@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cake_wallet/new-ui/widgets/windows/windows_welcome_panel.dart';
 import 'package:cake_wallet/src/widgets/cake_image_widget.dart';
 import 'package:cake_wallet/src/widgets/scrollable_with_bottom_section.dart';
 import 'package:flutter/gestures.dart';
@@ -75,6 +76,9 @@ class CreatePinWelcomePage extends BasePage {
 
   @override
   Widget body(BuildContext context) {
+    if (Platform.isWindows) {
+      return WindowsWelcomePanel(isWalletPasswordDirectInput: isWalletPasswordDirectInput);
+    }
     String welcomeImage;
     String cakeLogoThemed;
 

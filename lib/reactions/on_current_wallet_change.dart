@@ -60,10 +60,14 @@ void startCurrentWalletChangeReaction(
           wallet) async {
     try {
       if (wallet == null) {
+        stopCheckConnectionReaction();
         return;
       }
 
       await getIt.get<WalletManager>().ensureGroupHasHashedIdentifier(wallet);
+      // A newer wallet reaction may already own the sync/check listeners.
+      // Never replace those listeners with this completed, obsolete load.
+      if (!identical(appStore.wallet, wallet)) return;
 
       int? chainId;
       if (isEVMCompatibleChain(wallet.type)) {
@@ -71,11 +75,20 @@ void startCurrentWalletChangeReaction(
       }
 
       final node = settingsStore.getCurrentNode(wallet.type, chainId: chainId);
+      bool isCurrentConnection() {
+        if (!identical(appStore.wallet, wallet)) return false;
+        if (isEVMCompatibleChain(wallet.type) && evm!.getSelectedChainId(wallet) != chainId) {
+          return false;
+        }
+        return settingsStore.getCurrentNode(wallet.type, chainId: chainId) == node;
+      }
 
       startWalletSyncStatusChangeReaction(wallet, settingsStore);
-      startCheckConnectionReaction(wallet, settingsStore);
+      startCheckConnectionReaction(wallet, settingsStore,
+          isCurrentWallet: () => identical(appStore.wallet, wallet));
 
       await Future.delayed(Duration.zero);
+      if (!identical(appStore.wallet, wallet)) return;
 
       if (wallet.type == WalletType.monero ||
           wallet.type == WalletType.wownero ||
@@ -95,7 +108,10 @@ void startCurrentWalletChangeReaction(
         await ensureTorStarted(context: null);
       }
 
+      // Preserve a node selected manually while this wallet/Tor was loading.
+      if (!isCurrentConnection()) return;
       await wallet.connectToNode(node: node);
+      if (!isCurrentConnection()) return;
       SyncingSyncStatus.blockHistory.clear();
       if (wallet.type == WalletType.nano || wallet.type == WalletType.banano) {
         final powNode = settingsStore.getCurrentPowNode(wallet.type);

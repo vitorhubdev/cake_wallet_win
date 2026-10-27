@@ -1,4 +1,5 @@
 import "dart:async";
+import "dart:io";
 
 import "package:cake_wallet/bitcoin/bitcoin.dart";
 import "package:cake_wallet/core/auth_service.dart";
@@ -25,6 +26,7 @@ import "package:cake_wallet/new-ui/widgets/coins_page/seed_backup_reminder_card.
 import "package:cake_wallet/new-ui/widgets/coins_page/top_bar_widget/top_bar.dart";
 import "package:cake_wallet/new-ui/widgets/coins_page/unconfirmed_balance_widget.dart";
 import "package:cake_wallet/new-ui/widgets/coins_page/zcash_migration_modal.dart";
+import "package:cake_wallet/new-ui/widgets/windows/windows_monero_connection_card.dart";
 import "package:cake_wallet/routes.dart";
 import "package:cake_wallet/utils/payment_request.dart";
 import "package:cake_wallet/view_model/dashboard/dashboard_view_model.dart";
@@ -137,6 +139,8 @@ class _NewHomePageState extends State<NewHomePage> with RouteAware {
                             TopBar(
                               key: ValueKey(widget.dashboardViewModel.wallet.id),
                               dashboardViewModel: widget.dashboardViewModel,
+                              showConnectionStatus: !(Platform.isWindows &&
+                                  widget.dashboardViewModel.wallet.type == WalletType.monero),
                               onLightningSwitchPress: () {
                                 widget.dashboardViewModel.toggleLightningMode();
                               },
@@ -160,6 +164,14 @@ class _NewHomePageState extends State<NewHomePage> with RouteAware {
                                 });
                               },
                             ),
+                            if (Platform.isWindows &&
+                                widget.dashboardViewModel.wallet.type == WalletType.monero)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 18),
+                                child: WindowsMoneroConnectionCard(
+                                  dashboardViewModel: widget.dashboardViewModel,
+                                ),
+                              ),
                             Column(
                               children: [
                                 AnimatedSwitcher(

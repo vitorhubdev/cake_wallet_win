@@ -16,7 +16,8 @@
 
 # Cake Wallet — build comunitário para Windows
 
-Este fork prepara uma versão **Windows x64**, com compilação e testes pelo GitHub
+Este fork prepara uma versão **Windows x64 com foco em Monero (XMR)**, com
+navegação de desktop, status de conexão visível e compilação/testes pelo GitHub
 Actions. É uma distribuição comunitária, independente dos lançamentos oficiais
 da Cake Labs.
 

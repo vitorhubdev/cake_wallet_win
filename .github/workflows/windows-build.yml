@@ -75,6 +75,8 @@ jobs:
 
           Required CI gates: native MWEB string-ownership regression tests; stable upgrade configuration tests; packaged DLL loading and release-process launch; offline Monero TESTNET wallet creation, storage, incorrect-password rejection and reopening; real application onboarding. No real funds are used. Mainnet sync, payments, hardware wallets and commercial integrations are not established by these checks.
 
+          Windows Monero improvements: desktop navigation with sections initialized on first use; a persistent XMR connection panel with the current node and a manual node-management shortcut; responsive onboarding. Reconnection regression tests cover listener disposal, stale results and overlapping checks. Loopback socket tests cover direct HTTP probe deadlines and digest-client cleanup. Blockchain synchronization speed has not been benchmarked; experimental automatic node switching remains disabled.
+
           Production Cake API keys are not included. This Windows profile does not include Zcash, Zano, Decred or bundled Tor. Builds are unsigned. Use a new empty wallet to verify your environment before using funds. This fork keeps its compatibility constants stable across updates; do not import another build's encrypted application directory.
           NOTES
           gh release create "$tag" dist/*.zip dist/SHA256SUMS.txt \

@@ -1,24 +1,29 @@
 import 'package:cw_core/utils/print_verbose.dart';
-import 'package:mobx/mobx.dart';
 import 'package:cake_wallet/store/app_store.dart';
 
-ReactionDisposer? _onCurrentNodeChangeReaction;
+void Function()? _disposeCurrentNodeObserver;
+void Function()? _disposePowNodeObserver;
 
 void startOnCurrentNodeChangeReaction(AppStore appStore) {
-  _onCurrentNodeChangeReaction?.reaction.dispose();
-  appStore.settingsStore.nodes.observe((change) async {
+  _disposeCurrentNodeObserver?.call();
+  _disposePowNodeObserver?.call();
+  _disposeCurrentNodeObserver = appStore.settingsStore.nodes.observe((change) async {
     try {
-      if(change.newValue?.type == appStore.wallet!.type) {
-        await appStore.wallet!.connectToNode(node: change.newValue!);
+      final wallet = appStore.wallet;
+      final node = change.newValue;
+      if (wallet != null && node != null && node.type == wallet.type) {
+        await wallet.connectToNode(node: node);
       }
     } catch (e) {
       printV(e.toString());
     }
   });
-  appStore.settingsStore.powNodes.observe((change) async {
+  _disposePowNodeObserver = appStore.settingsStore.powNodes.observe((change) async {
     try {
-      if(change.newValue?.type == appStore.wallet!.type) {
-        await appStore.wallet!.connectToPowNode(node: change.newValue!);
+      final wallet = appStore.wallet;
+      final node = change.newValue;
+      if (wallet != null && node != null && node.type == wallet.type) {
+        await wallet.connectToPowNode(node: node);
       }
     } catch (e) {
       printV(e.toString());

@@ -224,77 +224,35 @@ class ProxyWrapper {
     Uri? onionUri,
     String? body,
     bool allowMitmMoneroBypassSSLCheck = false,
+    Duration? timeout,
   }) async {
-    HttpClient? torHttpClient;
-    HttpClient cleatnetHttpClient = HttpClient();
-    if (allowMitmMoneroBypassSSLCheck) {
-      cleatnetHttpClient.badCertificateCallback =
-          ((X509Certificate cert, String host, int port) => true);
+    final torEnabled = CakeTor.instance!.started;
+    final uri = torEnabled ? (onionUri ?? clearnetUri) : clearnetUri;
+    if (uri == null) {
+      throw ConnectionException("Unable to connect to server");
     }
 
-    ioc.IOClient clearnetClient = ioc.IOClient(cleatnetHttpClient);
-
-    bool torEnabled = CakeTor.instance!.started;
-
-    if (torEnabled) {
-      try {
-        // ignore: deprecated_member_use_from_same_package
-        torHttpClient = await getHttpClient(portOverride: portOverride);
-      } catch (_) {
-        rethrow;
-      }
+    // This helper returns a fully buffered Response, so its HTTP client belongs
+    // to this request. Closing it also aborts a timed-out node probe instead of
+    // leaving its socket running behind the next periodic connection check.
+    // ignore: deprecated_member_use_from_same_package
+    final httpClient = torEnabled ? getHttpClient(portOverride: portOverride) : HttpClient();
+    final client = ioc.IOClient(httpClient);
+    try {
       if (allowMitmMoneroBypassSSLCheck) {
-        torHttpClient.badCertificateCallback =
-            ((X509Certificate cert, String host, int port) => true);
+        httpClient.badCertificateCallback = ((X509Certificate cert, String host, int port) => true);
       }
-      if (onionUri != null) {
-        try {
-          return await _make(
-            method: RequestMethod.post,
-            client: ioc.IOClient(torHttpClient),
-            uri: onionUri,
-            headers: headers,
-            body: body,
-          );
-        } catch (_) {
-          rethrow;
-        }
-      }
-
-      if (clearnetUri != null) {
-        try {
-          return await _make(
-            method: RequestMethod.post,
-            client: ioc.IOClient(torHttpClient),
-            uri: clearnetUri,
-            headers: headers,
-            body: body,
-          );
-        } catch (_) {
-          rethrow;
-        }
-      }
+      final request = _make(
+        method: RequestMethod.post,
+        client: client,
+        uri: uri,
+        headers: headers,
+        body: body,
+      );
+      return await (timeout == null ? request : request.timeout(timeout));
+    } finally {
+      client.close();
     }
-
-    if (clearnetUri != null) {
-      try {
-        return HttpOverrides.runZoned(
-          () async {
-            return await _make(
-              method: RequestMethod.post,
-              client: clearnetClient,
-              uri: clearnetUri,
-              headers: headers,
-              body: body,
-            );
-          },
-        );
-      } catch (_) {
-        rethrow;
-      }
-    }
-
-    throw ConnectionException("Unable to connect to server");
   }
 
   Future<Response> put({

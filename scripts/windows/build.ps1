@@ -66,7 +66,10 @@ try {
             New-Item -ItemType Directory -Force $destination | Out-Null
             dart run vector_graphics_compiler --input-dir $directory.FullName --out-dir $destination
         }
-        flutter test test/tool/windows_secrets_test.dart --reporter expanded
+        flutter test test/tool/windows_secrets_test.dart `
+            test/reactions/on_current_node_change_test.dart `
+            test/reactions/check_connection_test.dart `
+            test/core/monero_node_probe_test.dart --reporter expanded
     }
 
     if ($Stage -in @('All', 'Build')) {

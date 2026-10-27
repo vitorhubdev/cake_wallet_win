@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -396,9 +397,24 @@ class Node {
     }
   }
 
-  Future<bool> requestMoneroNode({String methodName = 'get_info'}) async {
+  Future<bool> requestMoneroNode({
+    String methodName = 'get_info',
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (timeout.inMicroseconds <= 0) return false;
+    final elapsed = Stopwatch()..start();
+    Duration remainingTime() {
+      final remaining = timeout - elapsed.elapsed;
+      if (remaining.inMicroseconds <= 0) {
+        throw TimeoutException('Monero node probe timed out', timeout);
+      }
+      return remaining;
+    }
+
     if (useSocksProxy) {
-      return await requestNodeWithProxy();
+      return await requestNodeWithProxy(
+        timeout: timeout < const Duration(seconds: 5) ? timeout : const Duration(seconds: 5),
+      );
     }
 
     final path = '/json_rpc';
@@ -409,10 +425,12 @@ class Node {
       final jsonBody = json.encode(body);
 
       final response = await ProxyWrapper().post(
-          clearnetUri: rpcUri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonBody,
-          allowMitmMoneroBypassSSLCheck: true);
+        clearnetUri: rpcUri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonBody,
+        timeout: remainingTime(),
+        allowMitmMoneroBypassSSLCheck: true,
+      );
       // Check if we received a 401 Unauthorized response
       if (response.statusCode == 401) {
         final daemonRpc = DaemonRpc(
@@ -420,7 +438,7 @@ class Node {
           username: login ?? '',
           password: password ?? '',
         );
-        final response = await daemonRpc.call('get_info', {});
+        final response = await daemonRpc.call('get_info', {}, timeout: remainingTime());
         return !(response['offline'] as bool);
       }
 
@@ -430,16 +448,18 @@ class Node {
               ||
               responseString.contains("plain HTTP request was sent to HTTPS port") // Cloudflare
               ||
-              response.headers["location"] != null // Generic reverse proxy
-              ||
-              responseString
-                  .contains("301 Moved Permanently") // Poorly configured generic reverse proxy
-          ) &&
+              response.headers["location"] !=
+                  null // Generic reverse proxy
+                  ||
+              responseString.contains(
+                "301 Moved Permanently",
+              ) // Poorly configured generic reverse proxy
+              ) &&
           !(useSSL ?? false)) {
         final oldUseSSL = useSSL;
         useSSL = true;
         try {
-          final ret = await requestMoneroNode(methodName: methodName);
+          final ret = await requestMoneroNode(methodName: methodName, timeout: remainingTime());
           if (ret == true) {
             await save();
             return ret;
@@ -458,7 +478,7 @@ class Node {
     }
   }
 
-  Future<bool> requestNodeWithProxy() async {
+  Future<bool> requestNodeWithProxy({Duration timeout = const Duration(seconds: 5)}) async {
     if (!isValidProxyAddress && !CakeTor.instance!.enabled) {
       return false;
     }
@@ -475,7 +495,7 @@ class Node {
     final proxyAddress = proxy.split(':')[0];
     final proxyPort = int.parse(proxy.split(':')[1]);
     try {
-      final socket = await Socket.connect(proxyAddress, proxyPort, timeout: Duration(seconds: 5));
+      final socket = await Socket.connect(proxyAddress, proxyPort, timeout: timeout);
       socket.destroy();
       return true;
     } catch (_) {
@@ -644,62 +664,60 @@ class DaemonRpc {
   DaemonRpc(this.rpcUrl, {required this.username, required this.password});
 
   /// Perform a JSON-RPC call with Digest Authentication.
-  Future<Map<String, dynamic>> call(String method, Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> call(
+    String method,
+    Map<String, dynamic> params, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     final client = ProxyWrapper().getHttpIOClient();
-    final DigestAuth digestAuth = DigestAuth(username, password);
+    Future<Map<String, dynamic>> request() async {
+      final DigestAuth digestAuth = DigestAuth(username, password);
 
-    // Initial request to get the `WWW-Authenticate` header.
-    final initialResponse = await client.post(
-      Uri.parse(rpcUrl),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'jsonrpc': '2.0',
-        'id': '0',
-        'method': method,
-        'params': params,
-      }),
-    );
+      // Initial request to get the `WWW-Authenticate` header.
+      final initialResponse = await client.post(
+        Uri.parse(rpcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'jsonrpc': '2.0', 'id': '0', 'method': method, 'params': params}),
+      );
 
-    if (initialResponse.statusCode != 401 ||
-        !initialResponse.headers.containsKey('www-authenticate')) {
-      throw ServerResponseException('Unexpected response: ${initialResponse.body}');
+      if (initialResponse.statusCode != 401 ||
+          !initialResponse.headers.containsKey('www-authenticate')) {
+        throw ServerResponseException('Unexpected response: ${initialResponse.body}');
+      }
+
+      // Extract Digest details from `WWW-Authenticate` header.
+      final String authInfo = initialResponse.headers['www-authenticate']!;
+      digestAuth.initFromAuthorizationHeader(authInfo);
+
+      // Create Authorization header for the second request.
+      String uri = Uri.parse(rpcUrl).path;
+      String authHeader = digestAuth.getAuthString('POST', uri);
+
+      // Make the authenticated request.
+      final authenticatedResponse = await client.post(
+        Uri.parse(rpcUrl),
+        headers: {'Content-Type': 'application/json', 'Authorization': authHeader},
+        body: jsonEncode({'jsonrpc': '2.0', 'id': '0', 'method': method, 'params': params}),
+      );
+
+      if (authenticatedResponse.statusCode != 200) {
+        throw ServerResponseException('RPC call failed: ${authenticatedResponse.body}');
+      }
+
+      final Map<String, dynamic> result =
+          jsonDecode(authenticatedResponse.body) as Map<String, dynamic>;
+      if (result['error'] != null) {
+        throw ServerResponseException('RPC Error: ${result['error']}');
+      }
+
+      return result['result'] as Map<String, dynamic>;
     }
 
-    // Extract Digest details from `WWW-Authenticate` header.
-    final String authInfo = initialResponse.headers['www-authenticate']!;
-    digestAuth.initFromAuthorizationHeader(authInfo);
-
-    // Create Authorization header for the second request.
-    String uri = Uri.parse(rpcUrl).path;
-    String authHeader = digestAuth.getAuthString('POST', uri);
-
-    // Make the authenticated request.
-    final authenticatedResponse = await client.post(
-      Uri.parse(rpcUrl),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
-      body: jsonEncode({
-        'jsonrpc': '2.0',
-        'id': '0',
-        'method': method,
-        'params': params,
-      }),
-    );
-
-    if (authenticatedResponse.statusCode != 200) {
-      throw ServerResponseException('RPC call failed: ${authenticatedResponse.body}');
+    try {
+      // The two-step digest exchange shares one deadline and one client.
+      return await request().timeout(timeout);
+    } finally {
+      client.close();
     }
-
-    final Map<String, dynamic> result =
-        jsonDecode(authenticatedResponse.body) as Map<String, dynamic>;
-    if (result['error'] != null) {
-      throw ServerResponseException('RPC Error: ${result['error']}');
-    }
-
-    return result['result'] as Map<String, dynamic>;
   }
 }

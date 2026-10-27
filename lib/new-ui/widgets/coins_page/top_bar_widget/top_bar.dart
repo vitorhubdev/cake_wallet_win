@@ -19,11 +19,13 @@ class TopBar extends StatefulWidget {
     required this.onLightningSwitchPress,
     required this.dashboardViewModel,
     required this.onSettingsButtonPress,
+    this.showConnectionStatus = true,
     super.key,
   });
 
   final VoidCallback onLightningSwitchPress;
   final VoidCallback onSettingsButtonPress;
+  final bool showConnectionStatus;
   final DashboardViewModel dashboardViewModel;
 
   @override
@@ -38,6 +40,7 @@ class _TopBarState extends State<TopBar> {
   ReactionDisposer? _statusReactionDisposer;
 
   bool get replacesWalletName {
+    if (!widget.showConnectionStatus) return false;
     final status = widget.dashboardViewModel.status.runtimeType;
     if (status == SyncedSyncStatus) {
       return showSyncedMessage;
@@ -58,7 +61,8 @@ class _TopBarState extends State<TopBar> {
   void didUpdateWidget(covariant TopBar oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (identical(oldWidget.dashboardViewModel, widget.dashboardViewModel)) {
+    if (identical(oldWidget.dashboardViewModel, widget.dashboardViewModel) &&
+        oldWidget.showConnectionStatus == widget.showConnectionStatus) {
       return;
     }
 
@@ -66,10 +70,12 @@ class _TopBarState extends State<TopBar> {
     syncedMessageTimer = null;
     showSyncedMessage = false;
     _statusReactionDisposer?.call();
+    _statusReactionDisposer = null;
     _bindStatusReaction();
   }
 
   void _bindStatusReaction() {
+    if (!widget.showConnectionStatus) return;
     _statusReactionDisposer = reaction(
           (_) => widget.dashboardViewModel.status.runtimeType,
           (status) {

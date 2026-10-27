@@ -31,6 +31,25 @@ Os artefatos também ficam em **Actions → Windows x64 → execução aprovada 
 Artifacts → CakeWallet-Windows-x64**. Nesse caso, extraia o arquivo de artefatos
 e depois o ZIP portátil que ele contém.
 
+## Experiência Windows com foco em Monero
+
+O painel do XMR mantém o estado de conexão, o progresso real da sincronização
+e o hostname/porta do nó visíveis. **Gerenciar nós** abre a tela existente para
+escolher outro servidor ou configurar o seu. Credenciais do nó não são mostradas
+no endereço do painel. A troca automática experimental continua desativada.
+
+Janelas largas usam navegação lateral com rótulos e conteúdo centralizado;
+janelas pequenas mantêm a navegação compacta. As seções do painel Windows são
+criadas na primeira visita e preservam seu estado depois disso. A tela inicial
+é estática, com textos em português e acesso por teclado aos controles.
+
+As correções de reconexão evitam listeners duplicados, verificações concorrentes
+e resultados tardios aplicados à carteira ou ao nó que já foram trocados. As
+sondagens HTTP diretas do Monero têm um orçamento de dez segundos e fecham o
+cliente ao concluir ou expirar, inclusive na autenticação digest. Isso não mede
+nem promete redução do tempo de varredura da blockchain: a sincronização depende
+do nó, da rede, do computador e da altura de restauração escolhida.
+
 ## Compilar pelo GitHub Actions
 
 Envie alterações de código para `dev` ou `windows-ci`, ou use **Windows x64 →
@@ -45,6 +64,8 @@ Antes de publicar, o workflow exige:
 
 - Testes nativos de geração de endereços e liberação de memória do MWEB.
 - Testes de estabilidade das constantes de compatibilidade entre builds.
+- Regressões de reconexão, descarte de listeners e resultados antigos, além de
+  sondagens Monero e autenticação digest contra sockets locais sem nós externos.
 - Carregamento das DLLs e abertura do executável de release.
 - Criação, gravação, fechamento e reabertura de uma carteira Monero **testnet**
   descartável, sem daemon, conexão de rede ou fundos; também rejeita senha errada.
