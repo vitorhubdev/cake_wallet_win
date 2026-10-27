@@ -75,7 +75,7 @@ Future<Directory> getAppDir() async {
 
   if (_rootDirPath != null && _rootDirPath!.isNotEmpty) {
     dir = Directory.fromUri(Uri.file(_rootDirPath!));
-    dir.create(recursive: true);
+    await dir.create(recursive: true);
   } else {
     if (Platform.isWindows) {
       dir = await getApplicationSupportDirectory();

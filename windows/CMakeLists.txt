@@ -81,24 +81,35 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/monero/x86_64-w64-mingw32_libwallet2_api_c.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "monero_libwallet2_api_c.dll"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/monero/x86_64-w64-mingw32_libwallet2_api_c.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "libmonero_wallet2_api_c.dll"
   COMPONENT Runtime)
 
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/wownero/x86_64-w64-mingw32_libwallet2_api_c.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "wownero_libwallet2_api_c.dll"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/wownero/x86_64-w64-mingw32_libwallet2_api_c.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "libwownero_wallet2_api_c.dll"
   COMPONENT Runtime)
 
 
+# Recent pinned monero_c prebuilds do not require libssp. Keep support for older
+# locally built binaries that ship it, without making it a mandatory CI input.
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/monero/x86_64-w64-mingw32_libssp-0.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "libssp-0.dll"
-  COMPONENT Runtime)
+  COMPONENT Runtime OPTIONAL)
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/monero/x86_64-w64-mingw32_libwinpthread-1.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" RENAME "libwinpthread-1.dll"
   COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../build/windows-native/mweb/mweb.dll"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 
 if(PLUGIN_BUNDLED_LIBRARIES)
   install(FILES "${PLUGIN_BUNDLED_LIBRARIES}"
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Copy DLLs produced by Dart build hooks, including SQLite. These are separate
+# from Flutter plugin libraries and must travel with the portable application.
+set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
+install(DIRECTORY "${NATIVE_ASSETS_DIR}"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.

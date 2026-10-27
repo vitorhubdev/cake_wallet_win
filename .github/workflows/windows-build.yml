@@ -1,0 +1,115 @@
+name: Windows x64
+
+on:
+  push:
+    branches: [dev, windows-ci]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Build Windows native libraries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.24.1'
+          cache-dependency-path: cw_mweb/go/go.sum
+      - name: Install Windows cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
+      - name: Build MWEB and its Windows runtime
+        run: bash scripts/windows/build_mweb.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native
+          path: build/windows-native/
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Build and verify Windows x64
+    needs: native
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PUB_CACHE: C:\pub-cache
+      CARGO_TARGET_DIR: C:\cargo-target
+    steps:
+      - name: Configure Git for Windows paths and symlinks
+        run: |
+          git config --global core.longpaths true
+          git config --global core.symlinks true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-native
+          path: build/windows-native
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\pub-cache
+            C:\Users\runneradmin\.cargo\registry
+            C:\Users\runneradmin\.cargo\git
+            scripts/.cache/windows
+          key: windows-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: windows-deps-v1-
+      - name: Prepare and build
+        run: ./scripts/windows/build.ps1 -BuildNumber ${{ github.run_number }}
+      - name: Verify DLLs and launch the release executable
+        run: ./scripts/windows/smoke_test.ps1
+      - name: Create, store and reopen an offline Monero testnet wallet
+        run: dart run tool/windows_monero_smoke.dart (Resolve-Path build/windows/x64/runner/Release).Path
+      - name: Verify real application onboarding
+        run: |
+          $env:CAKE_WALLET_DIR = Join-Path $env:RUNNER_TEMP ('cw-startup-' + [Guid]::NewGuid())
+          flutter test integration_test/windows_startup_test.dart -d windows --timeout 3m --reporter expanded
+      - name: Package the complete portable bundle
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item docs/builds/WINDOWS_FORK.md build/windows/x64/runner/Release/README-WINDOWS.md
+          $name = 'CakeWallet-Windows-x64-6.5.0-${{ github.run_number }}'
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name.zip" | Set-Content "dist/SHA256SUMS.txt" -Encoding ascii
+          "## Windows build`n`nPortable bundle: $name.zip`n`nCommit: ${{ github.sha }}`n`nSHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: CakeWallet-Windows-x64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-diagnostics
+          path: |
+            build/windows-smoke/
+            build/integration_test/
+            build/integration_test_screenshots/
+          if-no-files-found: ignore
+          retention-days: 14

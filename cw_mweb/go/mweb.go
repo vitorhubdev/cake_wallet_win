@@ -1,7 +1,11 @@
 package main
 
+/*
+#include <stdlib.h>
+*/
+import "C"
+
 import (
-	"C"
 	"unsafe"
 
 	"github.com/ltcmweb/mwebd"
@@ -25,8 +29,8 @@ func StartServer(chain *C.char, dataDir *C.char, nodeUri *C.char, errMsg **C.cha
 		return 0
 	}
 
-// 	err = server.StartUnix(goDataDir + "/mwebd.sock")
-    start, err := server.Start(0)
+	// 	err = server.StartUnix(goDataDir + "/mwebd.sock")
+	start, err := server.Start(0)
 	if err != nil {
 		*errMsg = C.CString(err.Error())
 		return 0
@@ -56,6 +60,15 @@ func Addresses(scanSecret *C.char, scanSecretLen C.int, spendPubKey *C.char, spe
 	// Convert the resulting Go string to a C string
 	// The C code must free this memory
 	return C.CString(addr)
+}
+
+// FreeString releases strings returned by StartServer and Addresses using the
+// same C allocator that created them. In particular, Dart's ffi malloc.free
+// uses CoTaskMemFree on Windows, which cannot free C.CString allocations.
+//
+//export FreeString
+func FreeString(value *C.char) {
+	C.free(unsafe.Pointer(value))
 }
 
 func main() {}

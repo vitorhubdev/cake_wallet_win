@@ -15,9 +15,21 @@ String libPath = (() {
 })();
 
 class MWebFfi {
-  late final MWebFlutter lib;
+  final MWebFlutter lib;
+  final void Function(Pointer<Char>) _freeNativeString;
 
-  MWebFfi() : lib = MWebFlutter(DynamicLibrary.open(libPath));
+  MWebFfi() : this._(DynamicLibrary.open(libPath));
+
+  MWebFfi._(DynamicLibrary library)
+      : lib = MWebFlutter(library),
+        // C.CString uses the DLL's C allocator. ffi's malloc/calloc use
+        // CoTaskMemAlloc/CoTaskMemFree on Windows, so the DLL must free its own
+        // strings there. Keep compatibility with existing native builds on
+        // the other platforms, where ffi uses the process C allocator.
+        _freeNativeString = Platform.isWindows
+            ? library.lookupFunction<Void Function(Pointer<Char>), void Function(Pointer<Char>)>(
+                'FreeString')
+            : ((pointer) => malloc.free(pointer));
 
   static MWebFfi instance = MWebFfi();
 
@@ -27,19 +39,24 @@ class MWebFfi {
     final nodeUri_ = nodeUri.toNativeUtf8().cast<Char>();
     final errMsgPtr = calloc<Pointer<Char>>();
 
-    final port = lib.StartServer(chain, dataDir_, nodeUri_, errMsgPtr);
-    if (port == 0) {
-      final errMsg = errMsgPtr.value.cast<Utf8>().toDartString();
-      printV('Error starting server: $errMsg');
-      calloc.free(errMsgPtr.value);
+    try {
+      final port = lib.StartServer(chain, dataDir_, nodeUri_, errMsgPtr);
+      if (port == 0) {
+        final errMsg = errMsgPtr.value == nullptr
+            ? 'Native MWEB server returned no error message'
+            : errMsgPtr.value.cast<Utf8>().toDartString();
+        printV('Error starting server: $errMsg');
+      }
+      return port;
+    } finally {
+      if (errMsgPtr.value != nullptr) {
+        _freeNativeString(errMsgPtr.value);
+      }
+      malloc.free(chain);
+      malloc.free(dataDir_);
+      malloc.free(nodeUri_);
+      calloc.free(errMsgPtr);
     }
-
-    calloc.free(chain);
-    calloc.free(dataDir_);
-    calloc.free(nodeUri_);
-    calloc.free(errMsgPtr);
-
-    return port;
   }
 
   void stop() => lib.StopServer();
@@ -55,21 +72,26 @@ class MWebFfi {
       spendPubKeyPtr[k] = spendPub[k];
     }
 
-    final Pointer<Char> resultPtr = lib.Addresses(
-      scanSecretPtr.cast(),
-      scanSecret.length,
-      spendPubKeyPtr.cast(),
-      spendPub.length,
-      fromIndex,
-      toIndex,
-    );
-
-    final result = resultPtr.cast<Utf8>().toDartString();
-
-    malloc.free(scanSecretPtr);
-    malloc.free(spendPubKeyPtr);
-    malloc.free(resultPtr);
-
-    return result;
+    Pointer<Char> resultPtr = nullptr;
+    try {
+      resultPtr = lib.Addresses(
+        scanSecretPtr.cast(),
+        scanSecret.length,
+        spendPubKeyPtr.cast(),
+        spendPub.length,
+        fromIndex,
+        toIndex,
+      );
+      if (resultPtr == nullptr) {
+        throw StateError('Native MWEB address generation returned a null pointer');
+      }
+      return resultPtr.cast<Utf8>().toDartString();
+    } finally {
+      if (resultPtr != nullptr) {
+        _freeNativeString(resultPtr);
+      }
+      malloc.free(scanSecretPtr);
+      malloc.free(spendPubKeyPtr);
+    }
   }
 }

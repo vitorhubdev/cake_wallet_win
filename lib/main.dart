@@ -88,6 +88,9 @@ Future<void> runAppWithZone({Key? topLevelKey}) async {
 
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    // SQLite is initialized before initializeAppConfigs. Apply the directory
+    // override now so the database and wallet files use the same profile.
+    setRootDirFromEnv();
 
     final Completer<String?> initialShortcutCompleter = Completer<String?>();
 

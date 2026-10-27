@@ -1,0 +1,14 @@
+name: MWebFlutter
+description: Bindings to the Windows MWEB DLL built from cw_mweb/go.
+output: lib/generated_bindings.g.dart
+llvm-path:
+  - 'C:/Program Files/LLVM'
+headers:
+  entry-points:
+    - ../build/windows-native/mweb/mweb.h
+functions:
+  include:
+    - StartServer
+    - StopServer
+    - Addresses
+    - FreeString
