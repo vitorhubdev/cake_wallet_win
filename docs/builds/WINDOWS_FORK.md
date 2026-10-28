@@ -88,6 +88,9 @@ próprio cache. O GitHub pode remover caches conforme o limite do repositório.
 O perfil Windows desativa a descoberta opcional de JNI: o uso de JNI neste
 projeto pertence ao `path_provider` Android. Assim, um JDK presente no runner
 não inclui uma DLL que exigiria Java no computador do usuário.
+Os SVGs de `res/pictures` e `assets` são compilados para `.svg.vec`, mantendo
+suas subpastas. O build verifica cada saída antes de empacotar o aplicativo;
+isso inclui os logos da tela inicial e evita colisões entre ícones de mesmo nome.
 
 Se precisar corrigir os testes Windows enquanto uma compilação Monero válida
 ainda está rodando, use outra branch `windows-ci-*` e informe o run anterior no

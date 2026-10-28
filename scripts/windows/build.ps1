@@ -86,17 +86,9 @@ try {
         dart run build_runner build --delete-conflicting-outputs
         dart run tool/generate_localization.dart
 
-        # Run compilers synchronously, checking every exit status. The old shell
-        # helper's bare `wait` can silently discard a failed background compiler.
-        $graphicsRoot = (Resolve-Path res/pictures).Path
-        $graphicDirs = @((Get-Item $graphicsRoot)) + @(Get-ChildItem $graphicsRoot -Directory -Recurse)
-        foreach ($directory in $graphicDirs) {
-            if (@(Get-ChildItem $directory.FullName -File -Filter '*.svg').Count -eq 0) { continue }
-            $relative = [IO.Path]::GetRelativePath($graphicsRoot, $directory.FullName)
-            $destination = Join-Path (Join-Path $root 'assets/new-ui') $relative
-            New-Item -ItemType Directory -Force $destination | Out-Null
-            dart run vector_graphics_compiler --input-dir $directory.FullName --out-dir $destination
-        }
+        # Compile every SVG used by CakeImageWidget, preserving subdirectories
+        # and verifying each output before any application build can proceed.
+        & (Join-Path $PSScriptRoot 'compile_graphics.ps1') -ProjectRoot $root
         flutter test test/tool/windows_secrets_test.dart `
             test/core/wallet_name_validator_test.dart `
             test/reactions/on_current_node_change_test.dart `
