@@ -459,6 +459,7 @@
   "error_text_subaddress_name": "O nome do subendereço não pode conter os símbolos ` , ' \" e deve ter entre 1 e 20 caracteres",
   "error_text_template": "O nome do modelo e o endereço não podem conter os símbolos ` , ' \" e devem ter entre 1 e 106 caracteres",
   "error_text_wallet_name": "O nome da carteira só pode conter letras, números e os símbolos _ - e deve ter entre 1 e 33 caracteres",
+  "error_text_windows_wallet_name": "Escolha outro nome. O Windows reserva nomes como CON, NUL, COM1 e LPT1 e não aceita espaços no final.",
   "error_text_xmr": "O valor XMR não pode exceder o saldo disponível. O número de frações decimais deve ser menor ou igual a 12",
   "error_while_processing": "Ocorreu um erro durante o processamento",
   "errorGettingCredentials": "Falha: erro ao obter credenciais",

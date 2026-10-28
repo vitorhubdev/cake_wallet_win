@@ -52,6 +52,10 @@ janelas pequenas mantêm a navegação compacta. As seções do painel Windows s
 criadas na primeira visita e preservam seu estado depois disso. A tela inicial
 é estática, com textos em português e acesso por teclado aos controles.
 
+Os formulários de criação, restauração e renomeação recusam nomes reservados
+pelo Windows, como `CON` e `NUL`, e espaços no final do nome. Isso evita nomes
+que não podem ser usados como arquivos ou que seriam confundidos pelo sistema.
+
 As correções de reconexão evitam listeners duplicados, verificações concorrentes
 e resultados tardios aplicados à carteira ou ao nó que já foram trocados. As
 sondagens HTTP diretas do Monero têm um orçamento de dez segundos e fecham o
@@ -91,6 +95,7 @@ Antes de publicar, o workflow exige:
 
 - Testes nativos de geração de endereços e liberação de memória do MWEB.
 - Testes de estabilidade das constantes de compatibilidade entre builds.
+- Validação dos nomes de carteira contra as restrições de arquivos do Windows.
 - Regressões de reconexão, descarte de listeners e resultados antigos, além de
   sondagens Monero e autenticação digest contra sockets locais sem nós externos.
 - Carregamento das DLLs e abertura do executável de release.

@@ -499,6 +499,7 @@
   "error_text_subaddress_name": "Subaddress name can't contain ` , ' \" symbols\nand must be between 1 and 20 characters long",
   "error_text_template": "Template name and address can't contain ` , ' \" symbols\nand must be between 1 and 106 characters long",
   "error_text_wallet_name": "Wallet name can only contain letters, numbers, _ - symbols \nand must be between 1 and 33 characters long",
+  "error_text_windows_wallet_name": "Choose another name. Windows reserves names such as CON, NUL, COM1 and LPT1 and does not accept spaces at the end.",
   "error_text_xmr": "XMR value can't exceed available balance.\nThe number of fraction digits must be less or equal to 12",
   "error_while_processing": "An error occurred while processing",
   "errorGettingCredentials": "Failed: Error while getting credentials",
