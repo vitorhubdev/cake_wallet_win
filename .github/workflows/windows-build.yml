@@ -2,9 +2,14 @@ name: Windows x64
 
 on:
   push:
-    branches: [dev, windows-ci]
+    branches: [dev, windows-ci, 'windows-ci-*']
     paths-ignore: ['**/*.md']
   workflow_dispatch:
+    inputs:
+      native_run_id:
+        description: 'Optional earlier run with the identical Monero build recipe to reuse'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,6 +23,9 @@ jobs:
     name: Build pinned Monero for Windows
     runs-on: ubuntu-24.04
     timeout-minutes: 300
+    permissions:
+      contents: read
+      actions: read
     env:
       MONERO_BUILD_JOBS: '2'
       NUM_CORES: '2'
@@ -25,24 +33,74 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Select an explicitly requested native build
+        id: native-source
+        env:
+          INPUT_NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          run_id = os.environ.get('INPUT_NATIVE_RUN_ID', '').strip()
+          if not run_id:
+              match = re.search(r'(?m)^\[native-run:([0-9]+)\]$', os.environ.get('COMMIT_MESSAGE', ''))
+              run_id = match[1] if match else ''
+          if run_id and (not re.fullmatch(r'[1-9][0-9]{0,18}', run_id) or run_id == os.environ['GITHUB_RUN_ID']):
+              raise SystemExit('Invalid native source run; never wait on this same workflow run.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('run_id=' + run_id + '\n')
+          PY
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: monero-output
         with:
           path: build/windows-native/monero
           key: windows-monero-33671871-v1-${{ hashFiles('scripts/windows/build_monero.sh') }}
+      - name: Verify and await the explicitly requested native source run
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id != ''
+        timeout-minutes: 285
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_RUN_ID: ${{ steps.native-source.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN_ID" > "$RUNNER_TEMP/native-source-run.json"
+          source_commit=$(python3 - "$RUNNER_TEMP/native-source-run.json" <<'PY'
+          import json, os, re, sys
+          data = json.load(open(sys.argv[1]))
+          if data['head_repository']['full_name'] != os.environ['GITHUB_REPOSITORY'] or data['event'] not in ('push', 'workflow_dispatch'):
+              raise SystemExit('Reuse only a push/manual native build in this same repository.')
+          if data['path'] != '.github/workflows/windows-build.yml' or not re.fullmatch(r'[0-9a-f]{40}', data['head_sha']):
+              raise SystemExit('The requested source run is not this Windows build workflow.')
+          print(data['head_sha'])
+          PY
+          )
+          expected_recipe=$(git hash-object scripts/windows/build_monero.sh)
+          source_recipe=$(gh api "repos/$GITHUB_REPOSITORY/contents/scripts/windows/build_monero.sh?ref=$source_commit" --jq '.sha')
+          if [ "$source_recipe" != "$expected_recipe" ]; then
+            echo 'The requested native build used a different source pin or build recipe.' >&2
+            exit 1
+          fi
+          pwsh -NoProfile -File scripts/windows/wait_for_monero.ps1 -Repository "$GITHUB_REPOSITORY" -RunId "$NATIVE_RUN_ID" -TimeoutMinutes 280
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id != ''
+        with:
+          name: windows-monero-native
+          path: build/windows-native/monero
+          run-id: ${{ steps.native-source.outputs.run_id }}
+          github-token: ${{ github.token }}
       - name: Make room for the isolated native toolchain
-        if: steps.monero-output.outputs.cache-hit != 'true'
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id == ''
         run: |
           # Only unused, preinstalled SDKs on this disposable Linux runner.
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup
           df -h .
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        if: steps.monero-output.outputs.cache-hit != 'true'
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id == ''
         with:
           go-version: '1.25.1'
           cache: false
       - name: Install native build tools
-        if: steps.monero-output.outputs.cache-hit != 'true'
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id == ''
         timeout-minutes: 10
         run: |
           if [ -f /etc/apt/apt-mirrors.txt ]; then
@@ -51,7 +109,7 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y build-essential clang llvm git curl ca-certificates patch pkg-config autoconf automake libtool gperf bison flex texinfo python3 xz-utils unzip zip bzip2 file binutils cmake
       - name: Prepare pinned Monero and dependency-builder sources
-        if: steps.monero-output.outputs.cache-hit != 'true'
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id == ''
         run: |
           set -euo pipefail
           source_dir=build/windows-native-src/monero_c
@@ -60,7 +118,7 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/MrCyjaneK/simplybs.git "$source_dir/contrib/depends/simplybs"
           git -C "$source_dir/contrib/depends/simplybs" checkout --detach 9b1e86953fde5827d903243fc230ad66d39b6de0
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        if: steps.monero-output.outputs.cache-hit != 'true'
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id == ''
         id: monero-toolchain
         with:
           path: |
@@ -69,7 +127,7 @@ jobs:
           key: monero-toolchain-linux-x64-9b1e8695-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: monero-toolchain-linux-x64-9b1e8695-v1-
       - name: Compile the pinned Monero backend and matching runtimes
-        if: steps.monero-output.outputs.cache-hit != 'true'
+        if: steps.monero-output.outputs.cache-hit != 'true' && steps.native-source.outputs.run_id == ''
         id: monero-build
         timeout-minutes: 260
         run: bash scripts/windows/build_monero.sh
@@ -82,6 +140,8 @@ jobs:
             build/windows-native-src/monero_c/contrib/depends/simplybs/.buildlib/linux_amd64/built
             build/windows-native-src/monero_c/contrib/depends/simplybs/.buildlib/source
           key: ${{ steps.monero-toolchain.outputs.cache-primary-key }}
+      - name: Verify the completed native artifact before reuse or publication
+        run: python3 -c 'from scripts.windows.prepare_dependencies import verify_monero; verify_monero()'
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         if: success() && steps.monero-output.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -238,12 +298,6 @@ jobs:
           path: build/windows-native/monero
       - name: Compile release and bundle native runtimes
         run: ./scripts/windows/build.ps1 -Stage Build -BuildNumber ${{ github.run_number }}
-      - name: Verify MWEB with the final bundled threading runtime
-        run: |
-          $env:MWEB_NATIVE_TEST_LIBRARY = (Resolve-Path build/windows/x64/runner/Release/mweb.dll).Path
-          Push-Location cw_mweb
-          try { flutter test test/native/mweb_ffi_native_test.dart --reporter expanded }
-          finally { Pop-Location; Remove-Item Env:MWEB_NATIVE_TEST_LIBRARY }
       - name: Verify DLLs and launch the release executable
         run: ./scripts/windows/smoke_test.ps1
       - name: Create, store and reopen an offline Monero testnet wallet

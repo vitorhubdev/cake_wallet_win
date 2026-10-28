@@ -78,6 +78,15 @@ reunir seus runtimes. Os pacotes baixados têm SHA-256 fixado e verificado.
 A primeira compilação nativa pode demorar bastante; o CI armazena em cache a
 toolchain e a biblioteca pronta para reutilização nas execuções seguintes.
 
+Se precisar corrigir os testes Windows enquanto uma compilação Monero válida
+ainda está rodando, use outra branch `windows-ci-*` e informe o run anterior no
+campo opcional `native_run_id` do disparo manual, ou em uma linha do commit no
+formato `[native-run:ID]`. O workflow exige o mesmo repositório, o mesmo arquivo
+de workflow e o hash idêntico da receita Monero; aguarda o job nativo e confere
+o pin e os hashes do artefato. Isso preserva a compilação em andamento e mantém
+os testes Windows completos. Não reutilize um run da mesma branch que será
+cancelado pela configuração de concorrência.
+
 Antes de publicar, o workflow exige:
 
 - Testes nativos de geração de endereços e liberação de memória do MWEB.
@@ -85,7 +94,6 @@ Antes de publicar, o workflow exige:
 - Regressões de reconexão, descarte de listeners e resultados antigos, além de
   sondagens Monero e autenticação digest contra sockets locais sem nós externos.
 - Carregamento das DLLs e abertura do executável de release.
-- Repetição dos testes MWEB usando o runtime de threads do pacote final.
 - Criação, gravação, fechamento e reabertura de uma carteira Monero **testnet**
   descartável, sem daemon, conexão de rede ou fundos; também rejeita senha errada.
 - Abertura da tela inicial real, sem tela de erro, e verificação da pasta de

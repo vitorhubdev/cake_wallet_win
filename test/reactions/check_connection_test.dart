@@ -45,6 +45,9 @@ void main() {
   late List<String> connectivity;
 
   void start() {
+    // testWidgets owns a FakeAsync zone. A Completer created in setUp belongs
+    // to the outer zone, so pump cannot flush its result or cancel its timeout.
+    probeResult = Completer<bool>();
     startCheckConnectionReaction(
       wallet,
       settings,
@@ -64,7 +67,6 @@ void main() {
     status = FailedSyncStatus();
     currentWallet = true;
     connectivity = ['wifi'];
-    probeResult = Completer<bool>();
     node = _ProbeNode(() => probeResult.future);
     selectedNode = node;
 
