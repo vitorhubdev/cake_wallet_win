@@ -61,6 +61,9 @@ add_subdirectory("runner")
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+# JNI is used by Android dependencies. This Windows profile does not start a JVM.
+# Keep the optional JNI plugin disabled even when the build runner has a JDK.
+set(CMAKE_DISABLE_FIND_PACKAGE_JNI TRUE)
 include(flutter/generated_plugins.cmake)
 
 

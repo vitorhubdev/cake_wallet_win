@@ -256,14 +256,18 @@ jobs:
           flutter-version: '3.41.9'
           channel: stable
           cache: true
+          # Our explicit cache below stores Git mirrors, not every checkout.
+          pub-cache: 'false'
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: dependencies
         with:
           path: |
-            C:\pub-cache
+            C:\pub-cache\git\cache
+            C:\pub-cache\hosted
+            C:\pub-cache\hosted-hashes
             scripts/.cache/windows
-          key: windows-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
-          restore-keys: windows-deps-v1-
+          key: windows-deps-v2-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: windows-deps-v2-
       - name: Prepare checksum-pinned upstream dependencies
         run: python scripts/windows/prepare_dependencies.py --sources-only
       - name: Resolve Flutter dependencies and validate native MWEB
@@ -274,7 +278,9 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            C:\pub-cache
+            C:\pub-cache\git\cache
+            C:\pub-cache\hosted
+            C:\pub-cache\hosted-hashes
             scripts/.cache/windows
           key: ${{ steps.dependencies.outputs.cache-primary-key }}
       - name: Cache Rust dependency downloads

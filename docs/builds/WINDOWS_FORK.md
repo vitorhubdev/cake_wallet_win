@@ -81,6 +81,13 @@ e executa testes. Ele aguarda a biblioteca correta antes de compilar o app e
 reunir seus runtimes. Os pacotes baixados têm SHA-256 fixado e verificado.
 A primeira compilação nativa pode demorar bastante; o CI armazena em cache a
 toolchain e a biblioteca pronta para reutilização nas execuções seguintes.
+O cache de pacotes Dart guarda os repositórios Git-base, sem duplicar cada
+checkout completo. O Pub recria esses diretórios nas mesmas revisões fixadas.
+O cache automático duplicado do Pub fica desativado; o SDK Flutter tem seu
+próprio cache. O GitHub pode remover caches conforme o limite do repositório.
+O perfil Windows desativa a descoberta opcional de JNI: o uso de JNI neste
+projeto pertence ao `path_provider` Android. Assim, um JDK presente no runner
+não inclui uma DLL que exigiria Java no computador do usuário.
 
 Se precisar corrigir os testes Windows enquanto uma compilação Monero válida
 ainda está rodando, use outra branch `windows-ci-*` e informe o run anterior no
