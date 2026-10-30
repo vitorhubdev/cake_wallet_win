@@ -2,7 +2,7 @@ name: Diagnose Monero testnet reopening on Windows
 on:
   push:
     branches: [diagnose-xmr-smoke-windows]
-    paths: [.github/workflows/diagnose-monero-reopen.yml]
+    paths: [.github/workflows/diagnose-monero-reopen.yml, scripts/windows/diagnose_monero_ctypes.py]
 permissions:
   contents: read
   actions: read
