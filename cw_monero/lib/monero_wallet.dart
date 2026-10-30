@@ -492,7 +492,7 @@ abstract class MoneroWalletBase
         throw MoneroTransactionCreationException('You do not have enough XMR to send this amount.');
       }
 
-      if (inputs.isEmpty) throw MoneroTransactionCreationException('No inputs selected');
+      if (inputs.isEmpty) MoneroTransactionCreationException('No inputs selected');
 
       final moneroOutputs = outputs.map((output) {
         final outputAddress = output.isParsedAddress ? output.extractedAddress : output.address;

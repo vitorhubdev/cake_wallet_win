@@ -40,6 +40,37 @@ Os artefatos também ficam em **Actions → Windows x64 → execução aprovada 
 Artifacts → CakeWallet-Windows-x64**. Nesse caso, extraia o arquivo de artefatos
 para acessar o instalador e o ZIP portátil que ele contém.
 
+## Atualização de estabilidade Windows (após o build 12)
+
+A gravação explícita do Monero agora retorna somente após a escrita nativa;
+o backup adicional é executado dentro da mesma fila. Uma falha de disco não
+bloqueia permanentemente as próximas tentativas. O salvamento periódico evita
+sobreposição e cria checkpoints por tempo/progresso, sem alterar a altura de
+restauração nem pular a validação ou varredura de blocos.
+
+As consultas de altura têm cache por carteira/nó e descartam resultados
+atrasados. O indicador só marca sincronização concluída com zero blocos
+restantes e confirmação do backend nativo. Durante a recuperação, o histórico
+e os metadados são atualizados com menor frequência; isso reduz trabalho
+repetido na interface, mas não comprova aumento da velocidade da blockchain.
+
+Erros genéricos de abertura no Windows não apagam automaticamente o cache da
+carteira. O processo também bloqueia outra instância que tente abrir a mesma
+pasta de dados. Os arquivos de interface são localizados pelo executável,
+não pela pasta de trabalho escolhida pelo atalho ou terminal.
+
+O CI exige regressões determinísticas de fila/cache, testes nativos do bloqueio
+de perfil, gravação/reabertura de uma carteira testnet descartável com escrita
+concorrente, caminhos com espaços/acentos e tentativa de segunda instância.
+Também testa atualização sobre o instalador do build 12, com checksum fixado,
+e preservação de um arquivo-sentinela em AppData. Esse sentinela não substitui
+um teste completo de migração de todas as carteiras, PINs e backups cifrados.
+
+A receita nativa, as dependências fixadas, os identificadores de armazenamento
+e as constantes de compatibilidade foram preservados. Sincronização mainnet,
+pagamentos, hardware wallets, todas as rotinas de renomeação/remoção e todos os
+computadores Windows não estão cobertos pelos testes automatizados desta versão.
+
 ## Experiência Windows com foco em Monero
 
 O painel do XMR mantém o estado de conexão, o progresso real da sincronização
