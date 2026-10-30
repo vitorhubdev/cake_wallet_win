@@ -57,7 +57,7 @@ def worker(bundle, label, bad_pass):
         if not manager:
             raise RuntimeError("wallet manager returned null")
         with tempfile.TemporaryDirectory(prefix="cake-smoke-") as temp:
-            directory = Path(temp) / ("wallet data espaço" if label == "unicode" else "wallet data")
+            directory = Path(temp) / ("wallet data espaço" if label.startswith("unicode") else "wallet data")
             directory.mkdir()
             wallet_path = str(directory / "offline_testnet")
             path = wallet_path.encode("utf-8")
@@ -86,6 +86,14 @@ def worker(bundle, label, bad_pass):
                     original, wallet = wallet, None
                     report["wrong_password_close_ok"] = bool(close(manager, original, False))
             step = "reopen_identity"
+            if label == "unicode_short":
+                buffer = ctypes.create_unicode_buffer(32768)
+                size = ctypes.windll.kernel32.GetShortPathNameW(str(directory), buffer, len(buffer))
+                if size and size < len(buffer) and buffer.value.isascii():
+                    path = str(Path(buffer.value) / "offline_testnet").encode("ascii")
+                    report["ascii_short_alias"] = True
+                else:
+                    report["ascii_short_alias"] = False
             wallet = reopen(manager, path, password, 1)
             if not wallet:
                 raise RuntimeError("reopen returned null")
@@ -100,6 +108,8 @@ def worker(bundle, label, bad_pass):
     except BaseException as error:
         report["step"] = step
         report["error_type"] = type(error).__name__
+        if isinstance(error, RuntimeError):
+            report["safe_error_detail"] = str(error)
     finally:
         if wallet and manager:
             try:
@@ -118,7 +128,7 @@ def main():
     if not (bundle / "libmonero_wallet2_api_c.dll").exists():
         raise SystemExit("Native DLL is missing")
     results = []
-    for label in ("ascii", "unicode"):
+    for label in ("ascii", "unicode", "unicode_short"):
         for wrong_pass in ("no", "yes"):
             command = [sys.executable, __file__, "--worker", str(bundle), label, wrong_pass]
             try:
