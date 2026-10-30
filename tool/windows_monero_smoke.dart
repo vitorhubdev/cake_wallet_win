@@ -8,6 +8,7 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:monero/monero.dart' as monero;
+import 'package:cw_monero/api/windows_wallet_path.dart';
 import 'package:path/path.dart' as p;
 
 // Exercise the packaged native library with an unfunded, randomly generated
@@ -130,11 +131,12 @@ void _worker(String bundlePath, String temporaryPath) {
     final password = base64UrlEncode(List<int>.generate(32, (_) => random.nextInt(256)));
     final walletDirectory = Directory(p.join(temporaryPath, 'wallet data espaço'))..createSync();
     final walletPath = p.join(walletDirectory.path, 'offline_testnet');
+    final nativeWalletPath = nativeMoneroWalletPath(walletPath);
 
     step = 'create testnet wallet';
     activeWallet = monero.WalletManager_createWallet(
       manager!,
-      path: walletPath,
+      path: nativeWalletPath,
       password: password,
       language: 'English',
       networkType: networkType,
@@ -154,7 +156,7 @@ void _worker(String bundlePath, String temporaryPath) {
     step = 'reject incorrect password';
     activeWallet = monero.WalletManager_openWallet(
       manager!,
-      path: walletPath,
+      path: nativeWalletPath,
       password: '$password-incorrect',
       networkType: networkType,
     );
@@ -168,7 +170,7 @@ void _worker(String bundlePath, String temporaryPath) {
     step = 'reopen and compare identity';
     activeWallet = monero.WalletManager_openWallet(
       manager!,
-      path: walletPath,
+      path: nativeWalletPath,
       password: password,
       networkType: networkType,
     );
