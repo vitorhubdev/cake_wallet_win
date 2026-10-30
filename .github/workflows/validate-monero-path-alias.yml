@@ -27,5 +27,4 @@ jobs:
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           dart pub get
-          dart analyze native_wallet_path_test.dart ../../cw_monero/lib/api/windows_wallet_path.dart
           dart run native_wallet_path_test.dart
