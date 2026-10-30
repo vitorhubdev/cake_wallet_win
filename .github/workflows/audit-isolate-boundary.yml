@@ -1,0 +1,79 @@
+name: Check storage isolate closure ownership
+on:
+  push:
+    branches: [audit-windows-stability]
+    paths: [.github/workflows/audit-isolate-boundary.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Check the exact nested closure structure with a local-only callback
+        run: |
+          cat > /tmp/isolate_boundary.dart <<'DART'
+          import 'dart:async';
+          import 'dart:convert';
+          import 'dart:isolate';
+          class Queue {
+            Future<void> tail = Future<void>.value();
+            Future<T> run<T>(Future<T> Function() action) {
+              final result = tail.then<T>((_) => action());
+              tail = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+              return result;
+            }
+          }
+          class Wallet {
+            int ffiAddress() => 42;
+            int blockChainHeight() => 1;
+          }
+          final queue = Queue();
+          bool nativeStandIn(int address) => address == 42;
+          Future<bool> isolatedStore(int address) => Isolate.run(() => nativeStandIn(address));
+          Future<void> original(Future<void> Function() afterStore) {
+            final wallet = Wallet();
+            final address = wallet.ffiAddress();
+            return queue.run(() async {
+              final height = wallet.blockChainHeight();
+              if (height < 0) throw StateError('height');
+              final result = await Isolate.run(() => nativeStandIn(address));
+              if (!result) throw StateError('store');
+              await afterStore();
+            });
+          }
+          Future<void> separated(Future<void> Function() afterStore) {
+            final wallet = Wallet();
+            final address = wallet.ffiAddress();
+            return queue.run(() async {
+              final height = wallet.blockChainHeight();
+              if (height < 0) throw StateError('height');
+              final result = await isolatedStore(address);
+              if (!result) throw StateError('store');
+              await afterStore();
+            });
+          }
+          Future<void> main() async {
+            final port = ReceivePort();
+            var callbacks = 0;
+            Future<void> localOnly() async {
+              port.sendPort.send(null);
+              callbacks++;
+            }
+            Object? originalError;
+            try { await original(localOnly); } catch (error) { originalError = error; }
+            await separated(localOnly);
+            port.close();
+            if (callbacks == 0) throw StateError('Separated callback did not run');
+            print(jsonEncode({'originalFailed': originalError != null,
+              'originalError': originalError?.toString(), 'separatedPassed': true,
+              'scope': 'Dart closure transfer reproduction; not a native wallet test'}));
+          }
+          DART
+          dart /tmp/isolate_boundary.dart
