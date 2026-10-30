@@ -1,0 +1,45 @@
+name: Diagnose Monero testnet reopening on Windows
+on:
+  push:
+    branches: [diagnose-xmr-smoke-windows]
+    paths: [.github/workflows/diagnose-monero-reopen.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: CakeWallet-Windows-x64
+          path: artifact
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 40630919683
+          github-token: ${{ github.token }}
+      - name: Check previous proven package SHA-256 and extract
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = 'artifact/CakeWallet-Windows-x64-6.5.0-12.zip'
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'd16eed01da7a4e2623db8b1d9a2620a7c3037ccf497ae56cb80cf454eafe11da') {
+            throw 'Release 12 portable ZIP digest mismatch'
+          }
+          Expand-Archive -Path $zip -DestinationPath bundle
+          if (-not (Test-Path 'bundle/libmonero_wallet2_api_c.dll')) { throw 'Missing native DLL' }
+          python --version
+      - name: Compare ASCII/Unicode paths and incorrect-password reopen
+        run: python scripts/windows/diagnose_monero_ctypes.py bundle
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-monero-reopen-observations
+          path: monero-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 3
