@@ -12,17 +12,26 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: 2590df23308b6b6b367557926042951f3881c006
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
           ref: 21a0692f4ffa7ee1247499d0bf47adc82a9318cc
-      - name: Apply the reviewed checksum-verified source patch
+          path: source
+      - name: Apply the original reviewed patch with its exact checksum
         run: |
           python3 - <<'PY'
-          import base64, gzip, hashlib, subprocess
-          encoded = '''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'''
+          import base64, gzip, hashlib, pathlib, re, subprocess
+          transport = pathlib.Path('audit/.github/workflows/audit-storage-boundaries.yml').read_text()
+          encoded = re.search(r"encoded = '''([A-Za-z0-9+/=]+)'''", transport)[1]
+          assert encoded.count('Co8ffbyp+RVR') == 1
+          encoded = encoded.replace('Co8ffbyp+RVR', 'Co8ffbypb+RVR')
           patch = gzip.decompress(base64.b64decode(encoded, validate=True))
           assert hashlib.sha256(patch).hexdigest() == '887d0068f7ec655a8c69892fe723f89db69e5796f470f0db6a0fd6eed8371371'
-          subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
-          subprocess.run(['git', 'apply', '-'], input=patch, check=True)
-          subprocess.run(['git', 'diff', '--check'], check=True)
+          subprocess.run(['git', 'apply', '--check', '-'], input=patch, cwd='source', check=True)
+          subprocess.run(['git', 'apply', '-'], input=patch, cwd='source', check=True)
+          subprocess.run(['git', 'diff', '--check'], cwd='source', check=True)
           PY
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
@@ -31,8 +40,10 @@ jobs:
           cache: true
           pub-cache: 'false'
       - name: Verify deterministic regression checks remain intact
+        working-directory: source
         run: dart tool/windows_stability_checks.dart
       - name: Commit only reviewed application, test and documentation changes
+        working-directory: source
         run: |
           set -euo pipefail
           git diff --exit-code -- pubspec_overrides.yaml cw_monero/pubspec.yaml tool/configure_windows_secrets.dart windows/runner/Runner.rc .github
