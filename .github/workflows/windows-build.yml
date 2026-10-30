@@ -274,6 +274,16 @@ jobs:
           restore-keys: windows-deps-v2-
       - name: Verify deterministic synchronization and write-queue regressions
         run: dart tool/windows_stability_checks.dart
+      - name: Verify Windows native wallet path alias with accented directory
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Push-Location test/windows_native_path
+          try {
+            dart pub get
+            dart run native_wallet_path_test.dart
+          } finally {
+            Pop-Location
+          }
       - name: Verify Windows profile locking
         run: |
           $ErrorActionPreference = 'Stop'
