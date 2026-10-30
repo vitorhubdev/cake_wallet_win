@@ -1,0 +1,31 @@
+name: Validate Windows Monero path alias
+on:
+  push:
+    branches: [fix-windows-monero-unicode-open]
+    paths: [.github/workflows/validate-monero-path-alias.yml]
+permissions:
+  contents: read
+jobs:
+  windows-native:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Compile and test the actual Windows Unicode path resolver
+        working-directory: test/windows_native_path
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          dart pub get
+          dart analyze native_wallet_path_test.dart ../../cw_monero/lib/api/windows_wallet_path.dart
+          dart run native_wallet_path_test.dart
