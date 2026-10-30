@@ -11,6 +11,7 @@ import 'package:cw_monero/api/exceptions/wallet_restore_from_keys_exception.dart
 import 'package:cw_monero/api/exceptions/wallet_restore_from_seed_exception.dart';
 import 'package:cw_monero/api/transaction_history.dart';
 import 'package:cw_monero/api/wallet.dart';
+import 'package:cw_monero/api/windows_wallet_path.dart';
 import 'package:cw_monero/ledger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:monero/src/monero.dart';
@@ -88,24 +89,24 @@ void createWallet(
   txhistory = null;
   language = getSeedLanguage(language)!;
   final newW =
-      wmPtr.createWallet(path: path, password: password, language: language, networkType: 0);
+      wmPtr.createWallet(path: nativeMoneroWalletPath(path), password: password, language: language, networkType: 0);
 
   int status = newW.status();
   if (status != 0) {
     throw WalletCreationException(newW.errorString());
   }
-  newW.store(path: path);
+  newW.store(path: nativeMoneroWalletPath(path));
   setupBackgroundSync(password, newW);
-  newW.store(path: path);
+  newW.store(path: nativeMoneroWalletPath(path));
 
   currentWallet = newW;
   currentWallet!.setCacheAttribute(key: "cakewallet.passphrase", value: passphrase);
-  currentWallet!.store(path: path);
+  currentWallet!.store(path: nativeMoneroWalletPath(path));
   openedWalletsByPath[path] = currentWallet!;
 }
 
 bool isWalletExist({required String path}) {
-  return wmPtr.walletExists(path);
+  return wmPtr.walletExists(nativeMoneroWalletPath(path));
 }
 
 void restoreWalletFromSeedSync(
@@ -117,7 +118,7 @@ void restoreWalletFromSeedSync(
     int restoreHeight = 0}) {
   txhistory = null;
   final newW = wmPtr.recoveryWallet(
-    path: path,
+    path: nativeMoneroWalletPath(path),
     password: password,
     mnemonic: seed,
     restoreHeight: restoreHeight,
@@ -146,12 +147,12 @@ void restoreWalletFromSeedSync(
 
   openedWalletsByPath[path] = currentWallet!;
 
-  currentWallet!.store(path: path);
+  currentWallet!.store(path: nativeMoneroWalletPath(path));
 }
 
 void storePassphrase({required String path, required String passphrase}) {
   currentWallet!.setCacheAttribute(key: "cakewallet.passphrase", value: passphrase);
-  currentWallet!.store(path: path);
+  currentWallet!.store(path: nativeMoneroWalletPath(path));
 }
 
 void restoreWalletFromKeys(
@@ -166,7 +167,7 @@ void restoreWalletFromKeys(
   txhistory = null;
   var newW = (spendKey != "")
       ? wmPtr.createDeterministicWalletFromSpendKey(
-          path: path,
+          path: nativeMoneroWalletPath(path),
           password: password,
           language: language,
           spendKeyString: spendKey,
@@ -174,7 +175,7 @@ void restoreWalletFromKeys(
           // TODO(mrcyjanek): safe to remove
           restoreHeight: restoreHeight)
       : wmPtr.createWalletFromKeys(
-          path: path,
+          path: nativeMoneroWalletPath(path),
           password: password,
           restoreHeight: restoreHeight,
           addressString: address,
@@ -187,7 +188,7 @@ void restoreWalletFromKeys(
   if (status != 0) {
     throw WalletRestoreFromKeysException(message: newW.errorString());
   }
-  newW.store(path: path);
+  newW.store(path: nativeMoneroWalletPath(path));
 
   // CW-712 - Try to restore deterministic wallet first, if the view key doesn't
   // match the view key provided
@@ -198,7 +199,7 @@ void restoreWalletFromKeys(
       File(path).deleteSync();
       File(path + ".keys").deleteSync();
       newW = wmPtr.createWalletFromKeys(
-        path: path,
+        path: nativeMoneroWalletPath(path),
         password: password,
         restoreHeight: restoreHeight,
         addressString: address,
@@ -210,7 +211,7 @@ void restoreWalletFromKeys(
       if (status != 0) {
         throw WalletRestoreFromKeysException(message: newW.errorString());
       }
-      newW.store(path: path);
+      newW.store(path: nativeMoneroWalletPath(path));
 
       setupBackgroundSync(password, newW);
     }
@@ -220,7 +221,7 @@ void restoreWalletFromKeys(
 
   if (restoreHeight > 0) {
     setRefreshFromBlockHeight(height: restoreHeight);
-    currentWallet!.store(path: path);
+    currentWallet!.store(path: nativeMoneroWalletPath(path));
   }
 
   openedWalletsByPath[path] = currentWallet!;
@@ -236,7 +237,7 @@ void restoreWalletFromPolyseedWithOffset(
     int nettype = 0}) {
   txhistory = null;
   final newW = wmPtr.createWalletFromPolyseed(
-    path: path,
+    path: nativeMoneroWalletPath(path),
     password: password,
     networkType: nettype,
     mnemonic: seed,
@@ -258,7 +259,7 @@ void restoreWalletFromPolyseedWithOffset(
 
   currentWallet!.setCacheAttribute(key: "cakewallet.seed", value: seed);
   currentWallet!.setCacheAttribute(key: "cakewallet.passphrase", value: seedOffset);
-  currentWallet!.store(path: path);
+  currentWallet!.store(path: nativeMoneroWalletPath(path));
 
   setupBackgroundSync(password, currentWallet!);
   storeInBackground(force: true);
@@ -277,7 +278,7 @@ void restoreWalletFromSpendKeySync(
   // txhistory = null;
   // wptr = monero.WalletManager_createWalletFromKeys(
   //   wmPtr,
-  //   path: path,
+  //   path: nativeMoneroWalletPath(path),
   //   password: password,
   //   restoreHeight: restoreHeight,
   //   addressString: '',
@@ -288,7 +289,7 @@ void restoreWalletFromSpendKeySync(
 
   txhistory = null;
   final newW = wmPtr.createDeterministicWalletFromSpendKey(
-    path: path,
+    path: nativeMoneroWalletPath(path),
     password: password,
     language: language,
     spendKeyString: spendKey,
@@ -308,7 +309,7 @@ void restoreWalletFromSpendKeySync(
 
   if (restoreHeight > 0) {
     setRefreshFromBlockHeight(height: restoreHeight);
-    currentWallet!.store(path: path);
+    currentWallet!.store(path: nativeMoneroWalletPath(path));
   }
   currentWallet!.setCacheAttribute(key: "cakewallet.seed", value: seed);
 
@@ -326,10 +327,11 @@ Future<void> restoreWalletFromHardwareWallet(
     int nettype = 0,
     int restoreHeight = 0}) async {
   txhistory = null;
+  final nativePath = nativeMoneroWalletPath(path);
   final wmPtr = MoneroWalletManagerFactory().getWalletManager().ffiAddress();
   final newWptrAddr = await Isolate.run(() {
     return monero.WalletManager_createWalletFromDevice(Pointer.fromAddress(wmPtr),
-            path: path, password: password, restoreHeight: restoreHeight, deviceName: deviceName)
+            path: nativePath, password: password, restoreHeight: restoreHeight, deviceName: deviceName)
         .address;
   });
   final newW = MoneroWallet(Pointer.fromAddress(newWptrAddr));
@@ -345,7 +347,7 @@ Future<void> restoreWalletFromHardwareWallet(
 
   setRefreshFromBlockHeight(height: restoreHeight);
 
-  currentWallet!.store(path: path);
+  currentWallet!.store(path: nativeMoneroWalletPath(path));
   openedWalletsByPath[path] = currentWallet!;
 }
 
@@ -398,10 +400,11 @@ Future<void> loadWallet({required String path, required String password, int net
     enableLedgerExchange(gLedger!);
   }
 
+  final nativePath = nativeMoneroWalletPath(path);
   final addr = wmPtr.ffiAddress();
   final newWptrAddr = await Isolate.run(() {
     return monero.WalletManager_openWallet(Pointer.fromAddress(addr),
-            path: path, password: password)
+            path: nativePath, password: password)
         .address;
   });
 
