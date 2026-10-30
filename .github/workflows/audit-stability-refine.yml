@@ -1,0 +1,73 @@
+name: Finalize Windows stability source
+on:
+  push:
+    branches: [audit-windows-stability]
+    paths: [.github/workflows/audit-stability-refine.yml]
+permissions:
+  contents: write
+jobs:
+  refine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5d9d29a6efcffda37a59b01e2eefd35cf593d9d5
+      - name: Retain upstream automatic input selection and document test scope
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('cw_monero/lib/monero_wallet.dart')
+          s = p.read_text()
+          old = "if (inputs.isEmpty) throw MoneroTransactionCreationException('No inputs selected');"
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, "if (inputs.isEmpty) MoneroTransactionCreationException('No inputs selected');"))
+          p = Path('docs/builds/WINDOWS_FORK.md')
+          s = p.read_text()
+          heading = '## Experiência Windows com foco em Monero\n'
+          assert s.count(heading) == 1
+          note = '''## Atualização de estabilidade Windows (após o build 12)
+
+          A gravação explícita do Monero agora retorna somente após a escrita nativa;
+          o backup adicional é executado dentro da mesma fila. Uma falha de disco não
+          bloqueia permanentemente as próximas tentativas. O salvamento periódico evita
+          sobreposição e cria checkpoints por tempo/progresso, sem alterar a altura de
+          restauração nem pular a validação ou varredura de blocos.
+
+          As consultas de altura têm cache por carteira/nó e descartam resultados
+          atrasados. O indicador só marca sincronização concluída com zero blocos
+          restantes e confirmação do backend nativo. Durante a recuperação, o histórico
+          e os metadados são atualizados com menor frequência; isso reduz trabalho
+          repetido na interface, mas não comprova aumento da velocidade da blockchain.
+
+          Erros genéricos de abertura no Windows não apagam automaticamente o cache da
+          carteira. O processo também bloqueia outra instância que tente abrir a mesma
+          pasta de dados. Os arquivos de interface são localizados pelo executável,
+          não pela pasta de trabalho escolhida pelo atalho ou terminal.
+
+          O CI exige regressões determinísticas de fila/cache, testes nativos do bloqueio
+          de perfil, gravação/reabertura de uma carteira testnet descartável com escrita
+          concorrente, caminhos com espaços/acentos e tentativa de segunda instância.
+          Também testa atualização sobre o instalador do build 12, com checksum fixado,
+          e preservação de um arquivo-sentinela em AppData. Esse sentinela não substitui
+          um teste completo de migração de todas as carteiras, PINs e backups cifrados.
+
+          A receita nativa, as dependências fixadas, os identificadores de armazenamento
+          e as constantes de compatibilidade foram preservados. Sincronização mainnet,
+          pagamentos, hardware wallets, todas as rotinas de renomeação/remoção e todos os
+          computadores Windows não estão cobertos pelos testes automatizados desta versão.
+
+          '''
+          p.write_text(s.replace(heading, note + heading))
+          PY
+          git diff --check
+          git diff --exit-code -- pubspec_overrides.yaml cw_monero/pubspec.yaml tool/configure_windows_secrets.dart windows/runner/Runner.rc
+      - name: Commit only the reviewed source and documentation changes
+        run: |
+          git switch -c audit-stability-refined
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_monero/lib/monero_wallet.dart docs/builds/WINDOWS_FORK.md
+          git commit -m 'Preserve automatic input selection and document Windows stability test scope' -m '[native-run:40630919683]'
+          git push origin HEAD:refs/heads/audit-stability-refined
+          echo "Source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
