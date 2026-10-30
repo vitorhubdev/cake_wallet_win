@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)]
     [string]$InstallerPath,
+    [string]$PreviousInstallerPath,
     [string]$BundlePath = 'build\windows\x64\runner\Release',
     [string]$DiagnosticsPath = 'build\windows-install-smoke'
 )
@@ -29,12 +30,19 @@ $installation = Join-Path $testRoot 'Cake Wallet Windows'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 $uninstaller = Join-Path $installation 'unins000.exe'
 $failure = $null
+$profileData = Join-Path $env:APPDATA 'vitorhubdev/Cake Wallet Windows'
+New-Item -ItemType Directory -Path $profileData -Force | Out-Null
+$sentinel = Join-Path $profileData ('installer-test-' + [Guid]::NewGuid().ToString('N') + '.txt')
+$sentinelValue = [Guid]::NewGuid().ToString('N')
+[IO.File]::WriteAllText($sentinel, $sentinelValue)
 $report = [ordered]@{
     status = 'running'
     installer = $installer
     installation = $installation
     startedAt = [DateTime]::UtcNow.ToString('o')
     installedExeMatches = $false
+    upgradedFromPrevious = $false
+    userDataPreserved = $false
     applicationSmokePassed = $false
     uninstalled = $false
 }
@@ -64,6 +72,17 @@ function Invoke-OwnedSetupProcess {
 }
 
 try {
+    if ($PreviousInstallerPath) {
+        $previous = (Resolve-Path -LiteralPath $PreviousInstallerPath).Path
+        Invoke-OwnedSetupProcess -FilePath $previous -Arguments @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
+            '/NOCLOSEAPPLICATIONS', '/NORESTARTAPPLICATIONS', '/TASKS=',
+            "/DIR=$installation", "/LOG=$(Join-Path $diagnostics 'previous-install.log')"
+        )
+        if (-not (Test-Path -LiteralPath (Join-Path $installation 'CakeWallet.exe'))) {
+            throw 'The previous installer did not create its application.'
+        }
+    }
     Invoke-OwnedSetupProcess -FilePath $installer -Arguments @(
         '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
         '/NOCLOSEAPPLICATIONS', '/NORESTARTAPPLICATIONS', '/TASKS=',
@@ -77,6 +96,10 @@ try {
     $actual = (Get-FileHash -LiteralPath $installedExe -Algorithm SHA256).Hash
     if ($expected -ne $actual) { throw 'The installed executable differs from the validated bundle.' }
     $report.installedExeMatches = $true
+    $report.upgradedFromPrevious = [bool]$PreviousInstallerPath
+    if ([IO.File]::ReadAllText($sentinel) -ne $sentinelValue) {
+        throw 'The upgrade changed the data preservation sentinel.'
+    }
     & (Join-Path $PSScriptRoot 'smoke_test.ps1') -BundlePath $installation `
         -DiagnosticsPath (Join-Path $diagnostics 'application')
     $report.applicationSmokePassed = $true
@@ -94,6 +117,10 @@ try {
             }
             if (Test-Path -LiteralPath $uninstallKey) { throw 'The uninstall registry entry was not removed.' }
             $report.uninstalled = $true
+            if ([IO.File]::ReadAllText($sentinel) -ne $sentinelValue) {
+                throw 'Uninstallation changed the data preservation sentinel.'
+            }
+            $report.userDataPreserved = $true
         } elseif ($null -eq $failure) {
             throw 'The installed application has no uninstaller.'
         }
@@ -101,6 +128,8 @@ try {
         if ($null -eq $failure) { $failure = $_ }
         else { Write-Warning "Installer cleanup also failed: $_" }
     }
+    # Only this test's own sentinel is removed. Never remove the data directory.
+    Remove-Item -LiteralPath $sentinel -Force -ErrorAction SilentlyContinue
     $report.status = if ($null -eq $failure) { 'passed' } else { 'failed' }
     if ($null -ne $failure) { $report.error = $failure.ToString() }
     $report.finishedAt = [DateTime]::UtcNow.ToString('o')

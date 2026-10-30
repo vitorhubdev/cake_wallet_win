@@ -128,7 +128,7 @@ void _worker(String bundlePath, String temporaryPath) {
     const networkType = 1; // Monero TESTNET, not mainnet.
     final random = Random.secure();
     final password = base64UrlEncode(List<int>.generate(32, (_) => random.nextInt(256)));
-    final walletDirectory = Directory(p.join(temporaryPath, 'wallet data'))..createSync();
+    final walletDirectory = Directory(p.join(temporaryPath, 'wallet data espaço'))..createSync();
     final walletPath = p.join(walletDirectory.path, 'offline_testnet');
 
     step = 'create testnet wallet';

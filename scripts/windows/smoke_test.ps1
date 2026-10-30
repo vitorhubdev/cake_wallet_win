@@ -79,13 +79,15 @@ $report = [ordered]@{
     requiredFiles = @()
     nativeLibrariesLoaded = $false
     windowObserved = $false
+    duplicateLaunchPrevented = $false
     screenshot = $null
     limitation = 'Bundle/loader/process smoke only. A live window does not prove onboarding, wallet recovery, synchronization or transactions; run windows_startup_test.dart as well.'
 }
 $appProcess = $null
+$duplicateProcess = $null
 $probeProcess = $null
 $previousWalletDir = $env:CAKE_WALLET_DIR
-$profile = Join-Path $env:RUNNER_TEMP ('cake-wallet-smoke-' + [Guid]::NewGuid().ToString('N'))
+$profile = Join-Path $env:RUNNER_TEMP ('cake-wallet teste espaço-' + [Guid]::NewGuid().ToString('N'))
 
 try {
     foreach ($relativePath in $requiredFiles) {
@@ -152,7 +154,7 @@ public static class CakeWindowProbe {
     New-Item -ItemType Directory -Path $profile | Out-Null
     $env:CAKE_WALLET_DIR = $profile
     $appProcess = Start-Process -FilePath (Join-Path $bundle 'CakeWallet.exe') `
-        -WorkingDirectory $bundle -PassThru `
+        -WorkingDirectory $env:RUNNER_TEMP -PassThru `
         -RedirectStandardOutput (Join-Path $diagnostics 'app.stdout.log') `
         -RedirectStandardError (Join-Path $diagnostics 'app.stderr.log')
 
@@ -179,6 +181,16 @@ public static class CakeWindowProbe {
     if (-not $report.windowObserved) {
         throw "No continuously responsive, visible Cake Wallet window within $StartupTimeoutSeconds seconds."
     }
+
+    $duplicateProcess = Start-Process -FilePath (Join-Path $bundle 'CakeWallet.exe') `
+        -WorkingDirectory $env:RUNNER_TEMP -PassThru
+    if (-not $duplicateProcess.WaitForExit(15000)) {
+        throw 'A second process was allowed to open the same wallet profile.'
+    }
+    if ($duplicateProcess.ExitCode -ne 0 -or $appProcess.HasExited) {
+        throw 'Duplicate-launch handling failed or terminated the original application.'
+    }
+    $report.duplicateLaunchPrevented = $true
 
     # Diagnostic image only; an image alone is not an application assertion.
     try {
@@ -218,7 +230,7 @@ public static class CakeWindowProbe {
     $report.error = $_.ToString()
     throw
 } finally {
-    foreach ($ownedProcess in @($appProcess, $probeProcess)) {
+    foreach ($ownedProcess in @($duplicateProcess, $appProcess, $probeProcess)) {
         if ($null -eq $ownedProcess) { continue }
         try {
             if (-not $ownedProcess.HasExited) {

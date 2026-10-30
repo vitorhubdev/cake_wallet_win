@@ -261,7 +261,7 @@ void restoreWalletFromPolyseedWithOffset(
   currentWallet!.store(path: path);
 
   setupBackgroundSync(password, currentWallet!);
-  storeSync();
+  storeInBackground(force: true);
 
   openedWalletsByPath[path] = currentWallet!;
 }
@@ -312,7 +312,7 @@ void restoreWalletFromSpendKeySync(
   }
   currentWallet!.setCacheAttribute(key: "cakewallet.seed", value: seed);
 
-  storeSync();
+  storeInBackground(force: true);
 
   setupBackgroundSync(password, currentWallet!);
 
@@ -352,17 +352,15 @@ Future<void> restoreWalletFromHardwareWallet(
 Map<String, Wallet2Wallet> openedWalletsByPath = {};
 
 Future<void> loadWallet({required String path, required String password, int nettype = 0}) async {
-  if (openedWalletsByPath[path] != null) {
-    txhistory = null;
-    currentWallet = openedWalletsByPath[path]!;
-    return;
+  final cached = openedWalletsByPath[path];
+  if (currentWallet != null && currentWallet?.ffiAddress() != cached?.ffiAddress()) {
+    await storeSync(force: true);
   }
-
-  if (currentWallet != null) {
-    final addr = currentWallet!.ffiAddress();
-    Isolate.run(() {
-      monero.Wallet_store(Pointer.fromAddress(addr));
-    });
+  if (cached != null) {
+    txhistory = null;
+    currentWallet = cached;
+    invalidateNodeHeightCache();
+    return;
   }
   txhistory = null;
 

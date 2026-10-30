@@ -55,12 +55,12 @@ List<Wallet2SubaddressAccountRow> getAllAccount() {
 
 void addAccount({required String label}) {
   currentWallet!.addSubaddressAccount(label: label);
-  unawaited(store());
+  unawaited(storeInBackground());
 }
 
 void setLabelForAccount({required int accountIndex, required String label}) {
   subaddressAccount!.setLabel(accountIndex: accountIndex, label: label);
   MoneroAccountListBase.cachedAccounts[currentWallet!.ffiAddress()] = [];
   refreshAccounts();
-  unawaited(store());
+  unawaited(storeInBackground());
 }

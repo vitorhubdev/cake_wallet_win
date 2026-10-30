@@ -304,9 +304,9 @@ Future<String?> commitTransaction(
     throw CreationTransactionException(message: _formatTransactionError(error));
   }
   unawaited(() async {
-    storeSync(force: true);
+    await storeInBackground(force: true);
     await Future.delayed(Duration(seconds: 5));
-    storeSync(force: true);
+    await storeInBackground(force: true);
   }());
   return Future.value(txCommit);
 }

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:cw_core/amount/money.dart';
+import 'package:cw_core/utils/async_serial_queue.dart';
+import 'package:cw_monero/api/sync_polling.dart';
 import "package:cw_core/exceptions/cake_exception.dart";
 import 'package:cw_core/pathForWallet.dart';
 import 'package:cw_core/transaction_priority.dart';
@@ -90,7 +92,7 @@ abstract class MoneroWalletBase
       unawaited(updateTransactions());
     });
 
-    reaction((_) => isEnabledAutoGenerateSubaddress, (bool enabled) {
+    _onAutoGenerateReaction = reaction((_) => isEnabledAutoGenerateSubaddress, (bool enabled) {
       _updateSubAddress(enabled, account: walletAddresses.account);
     });
     _onTxHistoryChangeReaction = reaction((_) => transactionHistory, (__) {
@@ -157,6 +159,18 @@ abstract class MoneroWalletBase
   monero_wallet.SyncListener? _listener;
   ReactionDisposer? _onAccountChangeReaction;
   ReactionDisposer? _onTxHistoryChangeReaction;
+  ReactionDisposer? _onAutoGenerateReaction;
+  final _saveQueue = AsyncSerialQueue();
+  final _connectionQueue = AsyncSerialQueue();
+  final int _nativeAddress = currentWallet?.ffiAddress() ?? 0;
+  bool _closed = false;
+  bool _autoSaving = false;
+  bool _syncMetadataUpdating = false;
+  int _connectionGeneration = 0;
+  DateTime? _lastMetadataUpdate;
+  int _lastMetadataHeight = -1;
+  bool get _ownsNativeWallet => !_closed && _nativeAddress != 0 &&
+      currentWallet?.ffiAddress() == _nativeAddress;
   bool _isTransactionUpdating;
   bool _hasSyncAfterStartup;
   Timer? _autoSaveTimer;
@@ -183,8 +197,18 @@ abstract class MoneroWalletBase
       }
     }
 
-    _autoSaveTimer =
-        Timer.periodic(Duration(seconds: _autoSaveInterval), (_) async => await save());
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer.periodic(Duration(seconds: _autoSaveInterval), (_) async {
+      if (_autoSaving || !_ownsNativeWallet) return;
+      _autoSaving = true;
+      try {
+        await save(force: false);
+      } catch (error, stack) {
+        onError?.call(FlutterErrorDetails(exception: error, stack: stack));
+      } finally {
+        _autoSaving = false;
+      }
+    });
     // update transaction details after restore
     await walletAddresses.subaddressList.update(accountIndex: walletAddresses.account?.id ?? 0);
   }
@@ -212,6 +236,16 @@ abstract class MoneroWalletBase
 
   @override
   Future<void> close({bool shouldCleanup = false}) async {
+    _closed = true;
+    _connectionGeneration++;
+    _listener?.stop();
+    _autoSaveTimer?.cancel();
+    _onAccountChangeReaction?.call();
+    _onTxHistoryChangeReaction?.call();
+    _onAutoGenerateReaction?.call();
+    await _saveQueue.idle;
+    await _connectionQueue.idle;
+    await monero_wallet.walletStoreQueue.idle;
     if (isHardwareWallet) {
       disableLedgerExchange();
       final currentWalletDirPath = await pathForWalletDir(name: name, type: type);
@@ -220,7 +254,7 @@ abstract class MoneroWalletBase
         final wmaddr = wmPtr.ffiAddress();
         final waddr = openedWalletsByPath["$currentWalletDirPath/$name"]!.ffiAddress();
         openedWalletsByPath.remove("$currentWalletDirPath/$name");
-        closeWalletAwaitIfShould(wmaddr, waddr);
+        await closeWalletAwaitIfShould(wmaddr, waddr);
         if (currentWallet?.ffiAddress() == waddr) {
           currentWallet = null;
         }
@@ -228,39 +262,32 @@ abstract class MoneroWalletBase
       }
     }
 
-    _listener?.stop();
-    _onAccountChangeReaction?.reaction.dispose();
-    _onTxHistoryChangeReaction?.reaction.dispose();
-    _autoSaveTimer?.cancel();
   }
 
   @override
-  Future<void> connectToNode({required Node node}) async {
-    String socksProxy = node.socksProxyAddress ?? '';
-    printV("bootstrapped: ${CakeTor.instance!.bootstrapped}");
-    printV("     enabled: ${CakeTor.instance!.enabled}");
-    printV("        port: ${CakeTor.instance!.port}");
-    printV("     started: ${CakeTor.instance!.started}");
-    if (CakeTor.instance!.enabled) {
-      socksProxy = "127.0.0.1:${CakeTor.instance!.port}";
-    }
-    try {
-      syncStatus = ConnectingSyncStatus();
-      await monero_wallet.setupNodeSync(
-          address: node.uri.toString(),
-          login: node.login,
-          password: node.password,
-          useSSL: node.isSSL,
-          isLightWallet: false,
-          // FIXME: hardcoded value
-          socksProxyAddress: socksProxy);
-
-      await monero_wallet.setTrustedDaemon(node.trusted);
-      syncStatus = ConnectedSyncStatus();
-    } catch (e) {
-      syncStatus = FailedSyncStatus();
-      printV(e);
-    }
+  Future<void> connectToNode({required Node node}) {
+    final generation = ++_connectionGeneration;
+    return _connectionQueue.run(() async {
+      bool active() => _ownsNativeWallet && generation == _connectionGeneration;
+      if (!active()) return;
+      var socksProxy = node.socksProxyAddress ?? '';
+      final tor = CakeTor.instance;
+      if (tor != null && tor.enabled) socksProxy = '127.0.0.1:${tor.port}';
+      try {
+        syncStatus = ConnectingSyncStatus();
+        final connected = await monero_wallet.setupNodeSync(
+          address: node.uri.toString(), login: node.login, password: node.password,
+          useSSL: node.isSSL, isLightWallet: false, socksProxyAddress: socksProxy,
+        );
+        if (!active()) return;
+        if (!connected) throw StateError('Monero node initialization failed.');
+        await monero_wallet.setTrustedDaemon(node.trusted);
+        if (active()) syncStatus = ConnectedSyncStatus();
+      } catch (error) {
+        if (active()) syncStatus = FailedSyncStatus();
+        printV('Monero node connection failed.');
+      }
+    });
   }
 
   @override
@@ -313,20 +340,25 @@ abstract class MoneroWalletBase
 
   @override
   Future<void> startSync() async {
-    try {
-      _assertInitialHeight();
-    } catch (_) {
-      // our restore height wasn't correct, so lets see if using the backup works:
+    if (!_ownsNativeWallet) return;
+    // Do not discard a Windows cache, TX keys or Polyseed because of a height
+    // heuristic. The native wallet retains its actual restore height.
+    if (!Platform.isWindows) {
       try {
-        await resetCache(name); // Resetting the cache removes the TX Keys and Polyseed
         _assertInitialHeight();
-      } catch (e) {
-        // we still couldn't get a valid height from the backup?!:
-        // try to use the date instead:
+      } catch (_) {
+        // our restore height wasn't correct, so lets see if using the backup works:
         try {
-          _setHeightFromDate();
-        } catch (_) {
-          // we still couldn't get a valid sync height :/
+          await resetCache(name); // Resetting the cache removes the TX Keys and Polyseed
+          _assertInitialHeight();
+        } catch (e) {
+          // we still couldn't get a valid height from the backup?!:
+          // try to use the date instead:
+          try {
+            _setHeightFromDate();
+          } catch (_) {
+            // we still couldn't get a valid sync height :/
+          }
         }
       }
     }
@@ -460,7 +492,7 @@ abstract class MoneroWalletBase
         throw MoneroTransactionCreationException('You do not have enough XMR to send this amount.');
       }
 
-      if (inputs.isEmpty) MoneroTransactionCreationException('No inputs selected');
+      if (inputs.isEmpty) throw MoneroTransactionCreationException('No inputs selected');
 
       final moneroOutputs = outputs.map((output) {
         final outputAddress = output.isParsedAddress ? output.extractedAddress : output.address;
@@ -533,24 +565,29 @@ abstract class MoneroWalletBase
   }
 
   @override
-  Future<void> save() async {
+  Future<void> save({bool force = true}) => _saveQueue.run(() async {
+    if (!_ownsNativeWallet) return;
     await walletAddresses.updateUsedSubaddress();
-
+    if (!_ownsNativeWallet) return;
     if (isEnabledAutoGenerateSubaddress) {
       await walletAddresses.updateUnusedSubaddress(
           accountIndex: walletAddresses.account?.id ?? 0,
           defaultLabel: walletAddresses.account?.label ?? '');
     }
-
+    if (!_ownsNativeWallet) return;
     await walletAddresses.updateAddressesInBox();
-    await monero_wallet.store();
-    try {
-      await backupWalletFiles(name);
-    } catch (e) {
-      printV("¯\\_(ツ)_/¯");
-      printV(e);
-    }
-  }
+    if (!_ownsNativeWallet) return;
+    await monero_wallet.store(force: force, afterStore: () async {
+      if (!_ownsNativeWallet) return;
+      try {
+        // Keep the additional backup inside the native write queue so another
+        // queued save cannot replace its source files while they are copied.
+        await backupWalletFiles(name);
+      } catch (error) {
+        printV('Monero wallet was saved but its additional backup could not be created.');
+      }
+    });
+  });
 
   @override
   Future<void> renameWalletFiles(String newWalletName) async {
@@ -718,7 +755,7 @@ abstract class MoneroWalletBase
         for (final coin in unspentCoins) {
           final coinInfoList = unspentCoinsInfo.values
               .where((element) =>
-                  element.walletId.contains(id) &&
+                  element.walletId == id &&
                   element.accountIndex == walletAddresses.account!.id &&
                   !usedInfoKeys.contains(element.key) &&
                   _isSameCoin(element, coin))
@@ -787,7 +824,7 @@ abstract class MoneroWalletBase
     try {
       final List<dynamic> keys = <dynamic>[];
       final currentWalletUnspentCoins = unspentCoinsInfo.values.where((element) =>
-          element.walletId.contains(id) && element.accountIndex == walletAddresses.account!.id);
+          element.walletId == id && element.accountIndex == walletAddresses.account!.id);
 
       if (currentWalletUnspentCoins.isNotEmpty) {
         currentWalletUnspentCoins.forEach((element) {
@@ -812,7 +849,9 @@ abstract class MoneroWalletBase
 
   @override
   Future<Map<String, MoneroTransactionInfo>> fetchTransactions() async {
+    if (!_ownsNativeWallet) return {};
     await transaction_history.refreshTransactions();
+    if (!_ownsNativeWallet) return {};
     final resp = (await _getAllTransactionsOfAccount(walletAddresses.account?.id))
         .fold<Map<String, MoneroTransactionInfo>>(<String, MoneroTransactionInfo>{},
             (Map<String, MoneroTransactionInfo> acc, MoneroTransactionInfo tx) {
@@ -825,13 +864,11 @@ abstract class MoneroWalletBase
   }
 
   Future<void> updateTransactions() async {
+    if (!_ownsNativeWallet || _isTransactionUpdating) return;
+    _isTransactionUpdating = true;
     try {
-      if (_isTransactionUpdating) {
-        return;
-      }
-
-      _isTransactionUpdating = true;
       final transactions = await fetchTransactions();
+      if (!_ownsNativeWallet) return;
 
       final currentIds = transactionHistory.transactions.keys.toSet();
       final newIds = transactions.keys.toSet();
@@ -842,9 +879,9 @@ abstract class MoneroWalletBase
       // Add or update transactions
       transactions.forEach((key, tx) => transactionHistory.transactions[key] = tx);
       await transactionHistory.save();
-      _isTransactionUpdating = false;
     } catch (e) {
       printV(e);
+    } finally {
       _isTransactionUpdating = false;
     }
   }
@@ -965,39 +1002,46 @@ abstract class MoneroWalletBase
   }
 
   void _onNewBlock(int height, int blocksLeft, double ptc) async {
-    printV("onNewBlock: $height, $blocksLeft, $ptc");
+    if (!_ownsNativeWallet || syncStatus is ConnectingSyncStatus ||
+        syncStatus is NotConnectedSyncStatus || syncStatus is FailedSyncStatus ||
+        syncStatus is LostConnectionSyncStatus) return;
+    final complete = isMoneroSyncComplete(blocksLeft, monero_wallet.isSynchronized());
+    syncStatus = complete ? SyncedSyncStatus() : SyncingSyncStatus(blocksLeft, ptc);
+    final now = DateTime.now();
+    final metadataDue = _lastMetadataUpdate == null ||
+        now.difference(_lastMetadataUpdate!) >= const Duration(seconds: 6);
+    final needsMetadata = (walletInfo.isRecovery && metadataDue) ||
+        (complete && (!_hasSyncAfterStartup || height != _lastMetadataHeight));
+    if (_syncMetadataUpdating || !needsMetadata) return;
+    _syncMetadataUpdating = true;
+    final generation = _connectionGeneration;
     try {
-      if (walletInfo.isRecovery) {
-        await updateTransactions();
-        _askForUpdateBalance();
-        walletAddresses.accountList.update();
-      }
-
-      if (blocksLeft < 100) {
-        await updateTransactions();
-        _askForUpdateBalance();
-        walletAddresses.accountList.update();
-        syncStatus = SyncedSyncStatus();
-
+      await updateTransactions();
+      if (!_ownsNativeWallet || generation != _connectionGeneration) return;
+      _askForUpdateBalance();
+      walletAddresses.accountList.update();
+      _lastMetadataHeight = height;
+      _lastMetadataUpdate = now;
+      if (complete && monero_wallet.isSynchronized()) {
         if (!_hasSyncAfterStartup) {
-          _hasSyncAfterStartup = true;
           await save();
+          if (!_ownsNativeWallet || generation != _connectionGeneration) return;
+          _hasSyncAfterStartup = true;
         }
-
-        if (walletInfo.isRecovery) {
-          await setAsRecovered();
-        }
-      } else {
-        syncStatus = SyncingSyncStatus(blocksLeft, ptc);
+        if (walletInfo.isRecovery) await setAsRecovered();
       }
-    } catch (e) {
-      printV(e.toString());
+    } catch (error) {
+      printV('Monero synchronization metadata update failed.');
+    } finally {
+      _syncMetadataUpdating = false;
     }
   }
 
   void _onNewTransaction() async {
+    if (!_ownsNativeWallet) return;
     try {
       await updateTransactions();
+      if (!_ownsNativeWallet) return;
       _askForUpdateBalance();
       await Future<void>.delayed(Duration(seconds: 1));
     } catch (e) {

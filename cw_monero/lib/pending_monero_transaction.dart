@@ -74,7 +74,7 @@ class PendingMoneroTransaction with PendingTransaction {
         rethrow;
       }
     }
-    storeSync(force: true);
+    await storeInBackground(force: true);
     unawaited(() async {
       await Future.delayed(const Duration(milliseconds: 250));
       await wallet.fetchTransactions();
@@ -86,7 +86,7 @@ class PendingMoneroTransaction with PendingTransaction {
     try {
       final ret = await monero_transaction_history.commitTransactionFromPointerAddress(
           address: pendingTransactionDescription.pointerAddress, useUR: true);
-      storeSync(force: true);
+      await storeInBackground(force: true);
       unawaited(() async {
         await Future.delayed(const Duration(milliseconds: 250));
         await wallet.fetchTransactions();

@@ -12,7 +12,8 @@ import 'package:cw_monero/api/exceptions/setup_wallet_exception.dart';
 import 'package:cw_monero/api/get_all_unspent.dart';
 import "package:cw_monero/exceptions/monero_exceptions.dart";
 import 'package:monero/monero.dart' as monero;
-import 'package:mutex/mutex.dart';
+import 'package:cw_core/utils/async_serial_queue.dart';
+import 'package:cw_monero/api/sync_polling.dart';
 import 'package:polyseed/polyseed.dart';
 
 bool debugMonero = false;
@@ -164,48 +165,31 @@ Money getUnlockedBalance({int accountIndex = 0}) => Money.fromInt(
 
 int getCurrentHeight() => currentWallet?.blockChainHeight() ?? 0;
 
-int cachedNodeHeight = 0;
-bool isHeightRefreshing = false;
+final _nodeHeightCache = NodeHeightCache();
+int _nodeGeneration = 0;
 
-Future<int>? _nodeHeightInFlight;
+void invalidateNodeHeightCache() => _nodeGeneration++;
 
 Future<int> _refreshNodeHeight() {
-  final inFlight = _nodeHeightInFlight;
-  if (inFlight != null) return inFlight;
-
-  try {
-    final wallet = currentWallet;
-    if (wallet == null) return Future.value(cachedNodeHeight);
-
-    final wptrAddress = wallet.ffiAddress();
-    isHeightRefreshing = true;
-    final f = Isolate.run(() async {
-      return monero.Wallet_daemonBlockChainHeight(Pointer.fromAddress(wptrAddress));
-    }).then((h) {
-      cachedNodeHeight = h;
-      return h;
-    }).catchError((_) => cachedNodeHeight).whenComplete(() {
-      isHeightRefreshing = false;
-      _nodeHeightInFlight = null;
-    });
-    _nodeHeightInFlight = f;
-    return f;
-  } catch (e) {
-    printV("error refreshing node height: $e");
-    isHeightRefreshing = false;
-    _nodeHeightInFlight = null;
-    return Future.value(cachedNodeHeight);
-  }
+  final wallet = currentWallet;
+  if (wallet == null) return Future<int>.value(0);
+  final address = wallet.ffiAddress();
+  return _nodeHeightCache.read((address, _nodeGeneration), () => Isolate.run(() {
+    return monero.Wallet_daemonBlockChainHeight(Pointer.fromAddress(address));
+  }));
 }
 
 int getNodeHeightSync() {
-  if (isHeightRefreshing == false) {
-    if (cachedNodeHeight != 0 && getWlptr()?.height() == 1) {
-      return cachedNodeHeight;
-    }
-    unawaited(_refreshNodeHeight());
-  }
-  return cachedNodeHeight;
+  final wallet = currentWallet;
+  if (wallet == null) return 0;
+  final cached = _nodeHeightCache.peek((wallet.ffiAddress(), _nodeGeneration));
+  unawaited(_refreshNodeHeight());
+  return cached;
+}
+
+bool isSynchronized() {
+  final wallet = currentWallet;
+  return wallet != null && monero.Wallet_synchronized(Pointer.fromAddress(wallet.ffiAddress()));
 }
 
 Future<bool> isConnected() async {
@@ -220,17 +204,11 @@ Future<bool> setupNodeSync(
     bool useSSL = false,
     bool isLightWallet = false,
     String? socksProxyAddress}) async {
-  printV('''
-{
-  wptr!,
-  daemonAddress: $address,
-  useSsl: $useSSL,
-  proxyAddress: $socksProxyAddress ?? '',
-  daemonUsername: $login ?? '',
-  daemonPassword: $password ?? ''
-}
-''');
-  final addr = currentWallet!.ffiAddress();
+  final wallet = currentWallet;
+  if (wallet == null) throw SetupWalletException(message: 'No active Monero wallet.');
+  final addr = wallet.ffiAddress();
+  invalidateNodeHeightCache();
+  // Never print node credentials or a proxy URI that could contain credentials.
   printV("init: start");
   await Isolate.run(() {
     monero.Wallet_init(Pointer.fromAddress(addr),
@@ -242,18 +220,19 @@ Future<bool> setupNodeSync(
   });
   printV("init: end");
 
-  final status = currentWallet!.status();
+  if (currentWallet?.ffiAddress() != addr) return false;
+  final status = wallet.status();
 
   if (status != 0) {
-    final error = currentWallet!.errorString();
+    final error = wallet.errorString();
     if (error != "no tx keys found for this txid") {
-      printV("error: $error");
+      printV("Monero node initialization returned an error.");
       throw SetupWalletException(message: error);
     }
   }
 
   if (true) {
-    currentWallet!.init3(
+    wallet.init3(
       argv0: '',
       defaultLogBaseName: 'moneroc',
       console: true,
@@ -277,7 +256,9 @@ void setRecoveringFromSeed({required bool isRecovery}) {
   currentWallet!.store();
 }
 
-final storeMutex = Mutex();
+// A failed disk write must not leave a permanently acquired mutex. Keep errors
+// visible to explicit callers, while allowing the next write to proceed.
+final walletStoreQueue = AsyncSerialQueue();
 
 void refresh() {
   currentWallet!.refresh();
@@ -285,24 +266,44 @@ void refresh() {
 
 int lastStorePointer = 0;
 int lastStoreHeight = 0;
-void storeSync({bool force = false}) async {
-  final addr = currentWallet!.ffiAddress();
-  final synchronized = await Isolate.run(() {
-    return monero.Wallet_synchronized(Pointer.fromAddress(addr));
+DateTime? _lastStoreAt;
+
+Future<void> storeSync({bool force = false, Future<void> Function()? afterStore}) {
+  final wallet = currentWallet;
+  if (wallet == null) return Future<void>.error(StateError('No active Monero wallet.'));
+  final address = wallet.ffiAddress();
+  return walletStoreQueue.run(() async {
+    if (currentWallet?.ffiAddress() != address) {
+      throw StateError('The active Monero wallet changed before storage.');
+    }
+    final height = wallet.blockChainHeight();
+    final lastStoreAt = _lastStoreAt;
+    if (!force && lastStorePointer == address && height >= lastStoreHeight &&
+        height - lastStoreHeight < 5000 && lastStoreAt != null &&
+        !DateTime.now().isBefore(lastStoreAt) &&
+        DateTime.now().difference(lastStoreAt) < const Duration(minutes: 1)) {
+      return;
+    }
+    final stored = await Isolate.run(() => monero.Wallet_store(Pointer.fromAddress(address)));
+    if (!stored) throw MoneroWalletException('Could not save the Monero wallet. Check disk space and file permissions.');
+    // A failed write must not advance the checkpoint or suppress a later retry.
+    lastStorePointer = address;
+    lastStoreHeight = height;
+    _lastStoreAt = DateTime.now();
+    if (afterStore != null && currentWallet?.ffiAddress() == address) {
+      await afterStore();
+    }
   });
-  if (lastStorePointer == addr &&
-      lastStoreHeight + 75000 > currentWallet!.blockChainHeight() &&
-      !synchronized &&
-      !force) {
-    return;
+}
+
+/// Background persistence never converts an already-broadcast transaction into
+/// a failed payment. Explicit saves use [store] and surface storage failures.
+Future<void> storeInBackground({bool force = true}) async {
+  try {
+    await storeSync(force: force);
+  } catch (_) {
+    printV('Monero background storage failed; an explicit save is required.');
   }
-  lastStorePointer = currentWallet!.ffiAddress();
-  lastStoreHeight = currentWallet!.blockChainHeight();
-  await storeMutex.acquire();
-  await Isolate.run(() {
-    monero.Wallet_store(Pointer.fromAddress(addr));
-  });
-  storeMutex.release();
 }
 
 void setPasswordSync(String password) {
@@ -328,87 +329,61 @@ String getPublicSpendKey() => currentWallet?.publicSpendKey() ?? "";
 
 class SyncListener {
   SyncListener(this.onNewBlock, this.onNewTransaction)
-      : _cachedBlockchainHeight = 0,
-        _lastKnownBlockHeight = 0,
-        _initialSyncHeight = 0 {
-    _start();
+      : _walletAddress = currentWallet?.ffiAddress() ?? 0,
+        _nodeEpoch = _nodeGeneration {
+    _poller = SessionPoller<_SyncSnapshot>(
+      read: _read,
+      onData: _emit,
+      isActive: () => _walletAddress != 0 && _nodeEpoch == _nodeGeneration &&
+          currentWallet?.ffiAddress() == _walletAddress,
+      onError: (_, __) => printV('Monero synchronization status polling failed.'),
+    );
+    _poller.start();
   }
 
-  void Function(int, int, double) onNewBlock;
-  void Function() onNewTransaction;
-
-  Timer? _updateSyncInfoTimer;
-  int _cachedBlockchainHeight;
-  int _lastKnownBlockHeight;
-  int _initialSyncHeight;
+  final void Function(int, int, double) onNewBlock;
+  final void Function() onNewTransaction;
+  final int _walletAddress;
+  final int _nodeEpoch;
+  late final SessionPoller<_SyncSnapshot> _poller;
+  int _initialSyncHeight = 0;
+  int _lastKnownBlockHeight = 0;
   int _lastKnownNodeHeight = 0;
   int _ticksSinceEmit = 0;
-  static const int _heartbeatTicks = 5;
 
-  Future<int> getNodeHeightOrUpdate(int baseHeight) async {
-    if (_cachedBlockchainHeight < baseHeight || _cachedBlockchainHeight == 0) {
-      _cachedBlockchainHeight = await getNodeHeight();
-    }
-
-    return _cachedBlockchainHeight;
+  Future<_SyncSnapshot> _read() async {
+    final newTransaction = isNewTransactionExist();
+    final height = max(getSyncingHeight(), 0);
+    if (_initialSyncHeight <= 0) _initialSyncHeight = height;
+    final nodeHeight = await getNodeHeight();
+    return _SyncSnapshot(height, nodeHeight, newTransaction);
   }
 
-  void _start() {
-    _cachedBlockchainHeight = 0;
-    _lastKnownBlockHeight = 0;
-    _lastKnownNodeHeight = 0;
+  void _emit(_SyncSnapshot snapshot) {
+    if (snapshot.newTransaction) onNewTransaction();
+    if (snapshot.nodeHeight <= 0) return;
+    _ticksSinceEmit++;
+    if (snapshot.height == _lastKnownBlockHeight &&
+        snapshot.nodeHeight == _lastKnownNodeHeight && _ticksSinceEmit < 5) return;
     _ticksSinceEmit = 0;
-    _initialSyncHeight = 0;
-    _updateSyncInfoTimer ??= Timer.periodic(Duration(milliseconds: 1200), (_) async {
-      if (isNewTransactionExist()) {
-        onNewTransaction();
-      }
-
-      var syncHeight = getSyncingHeight();
-
-      if (syncHeight <= 0) {
-        syncHeight = getCurrentHeight();
-      }
-
-      if (_initialSyncHeight <= 0) {
-        _initialSyncHeight = syncHeight;
-      }
-
-      // in case when node didn't report new height yet
-      // it is a workaround for moving height request to another isolate
-      final nodeHeight = await getNodeHeightOrUpdate(syncHeight);
-      if (nodeHeight == 0) {
-        return;
-      }
-      final bchHeight = max(nodeHeight, syncHeight);
-      // printV("syncHeight: $syncHeight, _lastKnownBlockHeight: $_lastKnownBlockHeight, bchHeight: $bchHeight");
-
-      _ticksSinceEmit++;
-      final nothingChanged = _lastKnownBlockHeight == syncHeight &&
-          _lastKnownNodeHeight == nodeHeight;
-      if (nothingChanged && _ticksSinceEmit < _heartbeatTicks) {
-        return;
-      }
-      _ticksSinceEmit = 0;
-
-      _lastKnownBlockHeight = syncHeight;
-      _lastKnownNodeHeight = nodeHeight;
-      final track = bchHeight - _initialSyncHeight;
-      final diff = track - (bchHeight - syncHeight);
-      final ptc = diff <= 0 ? 0.0 : diff / track;
-      final left = bchHeight - syncHeight;
-
-      if ((syncHeight < 0 || left < 0)) {
-        printV("not calling onNewBlock: syncHeight: $syncHeight, left: $left");
-        return;
-      }
-
-      // 1. Actual new height; 2. Blocks left to finish; 3. Progress in percents;
-      onNewBlock.call(syncHeight, left, ptc);
-    });
+    _lastKnownBlockHeight = snapshot.height;
+    _lastKnownNodeHeight = snapshot.nodeHeight;
+    final target = max(snapshot.nodeHeight, snapshot.height);
+    final left = target - snapshot.height;
+    final track = target - _initialSyncHeight;
+    final progress = track <= 0 ? (left == 0 ? 1.0 : 0.0)
+        : ((snapshot.height - _initialSyncHeight) / track).clamp(0.0, 1.0).toDouble();
+    onNewBlock(snapshot.height, left, progress);
   }
 
-  void stop() => _updateSyncInfoTimer?.cancel();
+  void stop() => _poller.stop();
+}
+
+class _SyncSnapshot {
+  const _SyncSnapshot(this.height, this.nodeHeight, this.newTransaction);
+  final int height;
+  final int nodeHeight;
+  final bool newTransaction;
 }
 
 SyncListener setListeners(
@@ -419,8 +394,6 @@ SyncListener setListeners(
 }
 
 void onStartup() {}
-
-void _storeSync(Object _) => storeSync();
 
 Future<bool> _setupNodeSync(Map<String, Object?> args) async {
   final address = args['address'] as String;
@@ -441,13 +414,10 @@ Future<bool> _setupNodeSync(Map<String, Object?> args) async {
 
 void startRefresh() => startRefreshSync();
 
-Future<void> store() async => _storeSync(0);
+Future<void> store({bool force = true, Future<void> Function()? afterStore}) =>
+    storeSync(force: force, afterStore: afterStore);
 
-Future<int> getNodeHeight() async {
-  final cached = getNodeHeightSync();
-  if (cached != 0) return cached;
-  return _refreshNodeHeight();
-}
+Future<int> getNodeHeight() => _refreshNodeHeight();
 
 void rescanBlockchainAsync() => currentWallet!.rescanBlockchainAsync();
 

@@ -204,6 +204,9 @@ class MoneroWalletService extends WalletService<
     } catch (e) {
       // TODO: Implement Exception for wallet list service.
 
+      // A wrong password, locked file or initialization error is not proof of
+      // cache corruption. Automatic deletion also loses TX keys and Polyseed.
+      if (Platform.isWindows) rethrow;
       switch (openWalletTry) {
         case OpenWalletTry.initial:
           await restoreOrResetWalletFiles(name);

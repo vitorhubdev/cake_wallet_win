@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.14)
+project(CakeWindowsStabilityTests LANGUAGES CXX)
+enable_testing()
+add_executable(profile_lock_test profile_lock_test.cpp)
+target_compile_features(profile_lock_test PRIVATE cxx_std_17)
+target_compile_definitions(profile_lock_test PRIVATE NOMINMAX UNICODE _UNICODE)
+add_test(NAME profile_lock COMMAND profile_lock_test)
+
+if(MSVC)
+  target_compile_options(profile_lock_test PRIVATE /utf-8 /W4 /WX)
+endif()
