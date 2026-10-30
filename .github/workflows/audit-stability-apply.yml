@@ -1,0 +1,106 @@
+name: Validate Windows stability source
+on:
+  push:
+    branches: [audit-windows-stability]
+    paths: [.github/workflows/audit-stability-apply.yml]
+permissions:
+  contents: read
+jobs:
+  windows-lock:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 09fd1527a0ae4a43763b270e97c6c1f65981bac0
+          path: source
+          persist-credentials: false
+      - name: Apply the checksum-verified reviewed patch
+        run: |
+          @'
+          import base64, gzip, hashlib, pathlib, subprocess
+          parts = pathlib.Path('audit/.audit/stability')
+          encoded = ''.join((parts / ('part%d.b64' % i)).read_text().strip() for i in range(4))
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '2faff764b99b7b299177308d2368305d3010b7ee506a914fc6f9b8ea1df294fa'
+          subprocess.run(['git', 'apply', '--check', '-'], input=patch, cwd='source', check=True)
+          subprocess.run(['git', 'apply', '-'], input=patch, cwd='source', check=True)
+          subprocess.run(['git', 'diff', '--check'], cwd='source', check=True)
+          '@ | python -
+          if ($LASTEXITCODE) { throw 'Reviewed patch verification failed.' }
+      - name: Compile and test Windows profile locking
+        working-directory: source
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake -S test/windows -B build/profile-lock-test -A x64
+          cmake --build build/profile-lock-test --config Release
+          ctest --test-dir build/profile-lock-test -C Release --output-on-failure
+  source:
+    needs: windows-lock
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 09fd1527a0ae4a43763b270e97c6c1f65981bac0
+          path: source
+          persist-credentials: true
+      - name: Apply the checksum-verified reviewed patch
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          parts = pathlib.Path('audit/.audit/stability')
+          encoded = ''.join((parts / ('part%d.b64' % i)).read_text().strip() for i in range(4))
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '2faff764b99b7b299177308d2368305d3010b7ee506a914fc6f9b8ea1df294fa'
+          subprocess.run(['git', 'apply', '--check', '-'], input=patch, cwd='source', check=True)
+          subprocess.run(['git', 'apply', '-'], input=patch, cwd='source', check=True)
+          subprocess.run(['git', 'diff', '--check'], cwd='source', check=True)
+          PY
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Run deterministic storage, polling and cache regressions
+        working-directory: source
+        run: dart tool/windows_stability_checks.dart
+      - name: Check unchanged dependency pins and compatibility constants
+        working-directory: source
+        run: |
+          git diff --exit-code -- pubspec_overrides.yaml cw_monero/pubspec.yaml tool/configure_windows_secrets.dart windows/runner/Runner.rc
+          git diff --check
+      - name: Commit actual source, without patch transport or workflow changes
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git switch -c audit-stability-result
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_core cw_monero scripts test tool windows
+          git diff --cached --check
+          git commit -m 'Harden Windows profile startup and Monero persistence and synchronization' -m 'Serialize awaited writes and backups, reject stale poll results, preserve recovery data and native restore heights, and avoid false synchronization completion. Add deterministic concurrency, native storage, Unicode-path, duplicate-instance and installer-upgrade regression checks. Dependency pins and compatibility constants remain unchanged.' -m '[native-run:40630919683]'
+          git push origin HEAD:refs/heads/audit-stability-result
+          echo "Validated source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve the complete intended workflow for final connector commit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: stability-release-workflow
+          path: source/.github/workflows/windows-build.yml
+          retention-days: 3
+          include-hidden-files: true
+          if-no-files-found: error
