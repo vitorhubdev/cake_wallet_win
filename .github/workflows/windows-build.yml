@@ -210,7 +210,11 @@ jobs:
           set -euo pipefail
           tag="windows-6.5.0-${BUILD_NUMBER}-${BUILD_ATTEMPT}"
           cat > release-notes.md <<'NOTES'
-          Community Windows x64 build of Cake Wallet. This is not an official Cake Labs release.
+          Community Windows x64 stability update of Cake Wallet, based on upstream 6.5.0. This is not an official Cake Labs release.
+
+          Stability changes: await and serialize Monero writes before backup; bounded autosave checkpoints; discard stale and overlapping status polls; refresh node-height cache per wallet/node; require zero blocks remaining AND native synchronization confirmation; reduce repeated history work during recovery; preserve Windows wallet files on arbitrary open errors and remove automatic height-based cache deletion; serialize node changes; prevent concurrent application instances accessing one data directory; support launching from other working directories.
+
+          Additional required checks: deterministic async/cache regressions; Windows profile lock/exclusion and Unicode paths; real packaged Monero storage API with concurrent writes and stale-write rejection; duplicate launch; upgrade from checksum-pinned build 12; preservation of an AppData sentinel during upgrade and uninstall. The sentinel check is not a complete encrypted-wallet migration test. No mainnet synchronization speedup or absence of all defects is claimed.
 
           Download the Setup.exe installer to install Cake Wallet Windows for your Windows user. It includes the application and its required DLLs. A portable ZIP is also available: extract it completely and run CakeWallet.exe. SHA256SUMS.txt verifies both downloads; build-info.json identifies the source and toolchain.
 
@@ -268,6 +272,15 @@ jobs:
             scripts/.cache/windows
           key: windows-deps-v2-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
           restore-keys: windows-deps-v2-
+      - name: Verify deterministic synchronization and write-queue regressions
+        run: dart tool/windows_stability_checks.dart
+      - name: Verify Windows profile locking
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake -S test/windows -B build/windows-profile-tests -A x64
+          cmake --build build/windows-profile-tests --config Release
+          ctest --test-dir build/windows-profile-tests -C Release --output-on-failure
       - name: Prepare checksum-pinned upstream dependencies
         run: python scripts/windows/prepare_dependencies.py --sources-only
       - name: Resolve Flutter dependencies and validate native MWEB
@@ -308,6 +321,11 @@ jobs:
         run: ./scripts/windows/smoke_test.ps1
       - name: Create, store and reopen an offline Monero testnet wallet
         run: dart run tool/windows_monero_smoke.dart (Resolve-Path build/windows/x64/runner/Release).Path
+      - name: Verify the real Monero storage API with a disposable testnet wallet
+        run: |
+          $env:CAKE_MONERO_TEST_BUNDLE = (Resolve-Path build/windows/x64/runner/Release).Path
+          $env:PATH = "$env:CAKE_MONERO_TEST_BUNDLE;$env:PATH"
+          flutter test test/monero/windows_storage_test.dart --reporter expanded --timeout 2m
       - name: Verify real application onboarding
         run: |
           $env:CAKE_WALLET_DIR = Join-Path $env:RUNNER_TEMP ('cw-startup-' + [Guid]::NewGuid())
@@ -324,10 +342,18 @@ jobs:
           "## Windows build`n`nPortable bundle: $name.zip`n`nCommit: ${{ github.sha }}`n`nSHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
       - name: Build the complete Windows installer
         run: ./scripts/windows/package_installer.ps1 -Version 6.5.0 -BuildNumber ${{ github.run_number }}
+      - name: Download and verify the previously released installer for upgrade testing
+        run: |
+          $uri = 'https://github.com/vitorhubdev/cake_wallet_win/releases/download/windows-6.5.0-12-1/CakeWallet-Windows-x64-6.5.0-12-Setup.exe'
+          $target = Join-Path $env:RUNNER_TEMP 'CakeWallet-previous-Setup.exe'
+          Invoke-WebRequest -Uri $uri -OutFile $target -TimeoutSec 120
+          if ((Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne '5b81ee0b09b622a3595a571ef7ac84144d8b14a819e38fbecf33601f45461cc0') {
+            throw 'The previous installer checksum does not match the published build 12.'
+          }
       - name: Verify installation, installed application and uninstallation
         run: |
           $name = 'CakeWallet-Windows-x64-6.5.0-${{ github.run_number }}-Setup.exe'
-          ./scripts/windows/install_smoke_test.ps1 -InstallerPath "dist/$name"
+          ./scripts/windows/install_smoke_test.ps1 -InstallerPath "dist/$name" -PreviousInstallerPath (Join-Path $env:RUNNER_TEMP 'CakeWallet-previous-Setup.exe')
           $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $name" | Add-Content "dist/SHA256SUMS.txt" -Encoding ascii
           "`nInstaller: $name`n`nSHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
