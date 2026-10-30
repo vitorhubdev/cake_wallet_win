@@ -22,7 +22,7 @@ jobs:
           ref: 09fd1527a0ae4a43763b270e97c6c1f65981bac0
           path: source
           persist-credentials: false
-      - name: Apply the checksum-verified reviewed patch
+      - name: Apply the checksum-verified reviewed patch and explicit test header
         run: |
           @'
           import base64, gzip, hashlib, pathlib, subprocess
@@ -32,6 +32,10 @@ jobs:
           assert hashlib.sha256(patch).hexdigest() == '2faff764b99b7b299177308d2368305d3010b7ee506a914fc6f9b8ea1df294fa'
           subprocess.run(['git', 'apply', '--check', '-'], input=patch, cwd='source', check=True)
           subprocess.run(['git', 'apply', '-'], input=patch, cwd='source', check=True)
+          test = pathlib.Path('source/test/windows/profile_lock_test.cpp')
+          text = test.read_text(encoding='utf-8')
+          assert '#include <string>' not in text
+          test.write_text(text.replace('#include <fstream>', '#include <fstream>\n#include <string>'), encoding='utf-8')
           subprocess.run(['git', 'diff', '--check'], cwd='source', check=True)
           '@ | python -
           if ($LASTEXITCODE) { throw 'Reviewed patch verification failed.' }
@@ -58,7 +62,7 @@ jobs:
           ref: 09fd1527a0ae4a43763b270e97c6c1f65981bac0
           path: source
           persist-credentials: true
-      - name: Apply the checksum-verified reviewed patch
+      - name: Apply the checksum-verified reviewed patch and explicit test header
         run: |
           python3 - <<'PY'
           import base64, gzip, hashlib, pathlib, subprocess
@@ -68,6 +72,10 @@ jobs:
           assert hashlib.sha256(patch).hexdigest() == '2faff764b99b7b299177308d2368305d3010b7ee506a914fc6f9b8ea1df294fa'
           subprocess.run(['git', 'apply', '--check', '-'], input=patch, cwd='source', check=True)
           subprocess.run(['git', 'apply', '-'], input=patch, cwd='source', check=True)
+          test = pathlib.Path('source/test/windows/profile_lock_test.cpp')
+          text = test.read_text(encoding='utf-8')
+          assert '#include <string>' not in text
+          test.write_text(text.replace('#include <fstream>', '#include <fstream>\n#include <string>'), encoding='utf-8')
           subprocess.run(['git', 'diff', '--check'], cwd='source', check=True)
           PY
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
