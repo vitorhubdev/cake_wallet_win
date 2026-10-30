@@ -40,6 +40,13 @@ Os artefatos também ficam em **Actions → Windows x64 → execução aprovada 
 Artifacts → CakeWallet-Windows-x64**. Nesse caso, extraia o arquivo de artefatos
 para acessar o instalador e o ZIP portátil que ele contém.
 
+
+### Pastas com acentos no Windows
+
+O backend nativo pode criar arquivos Monero em uma pasta com caracteres não ASCII e falhar ao reabri-los. Quando o volume disponibiliza um nome curto NTFS (8.3), esta versão passa ao backend o alias ASCII da **mesma pasta**, sem copiar, mover, renomear ou redefinir o cache e as chaves da carteira. O teste de integração continua usando uma pasta com acento e exige reabertura preservando exatamente endereço e seed.
+
+O alias 8.3 não existe em todos os volumes/configurações; nesse caso, a aplicação falha sem alterar os arquivos. Nomes de arquivo de carteira que contêm caracteres não ASCII também são recusados pelo caminho nativo nesta versão, até que o backend ofereça suporte Unicode confiável. Para criar uma nova carteira no Windows, use um nome composto por caracteres ASCII. Este tratamento não comprova compatibilidade com todas as instalações do Windows, redes de arquivos ou versões do Monero.
+
 ## Atualização de estabilidade Windows (após o build 12)
 
 A gravação explícita do Monero agora retorna somente após a escrita nativa;
