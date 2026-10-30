@@ -55,7 +55,7 @@ e os metadados são atualizados com menor frequência; isso reduz trabalho
 repetido na interface, mas não comprova aumento da velocidade da blockchain.
 
 Erros genéricos de abertura no Windows não apagam automaticamente o cache da
-carteira. O processo também bloqueia outra instância que tente abrir a mesma
+carteira, não coletam seeds e não abrem outras carteiras implicitamente. O processo também bloqueia outra instância que tente abrir a mesma
 pasta de dados. Os arquivos de interface são localizados pelo executável,
 não pela pasta de trabalho escolhida pelo atalho ou terminal.
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -49,20 +50,35 @@ void main() {
       await temporary.delete(recursive: true);
     });
     test('awaited concurrent saves persist metadata before reopen', () async {
-      native.Wallet_setCacheAttribute(current!, key: 'cake.stability.probe', value: 'persisted');
+      expect(native.Wallet_setCacheAttribute(current!,
+          key: 'cake.stability.probe', value: 'persisted'), isTrue);
+      final localOnly = ReceivePort();
+      addTearDown(localOnly.close);
+      final callbackMessage = localOnly.first;
       final backupStarted = Completer<void>();
       final releaseBackup = Completer<void>();
       final first = wallet.store(afterStore: () async {
+        // ReceivePort cannot cross an isolate boundary. The backup callback
+        // must remain local even while the actual DLL write runs elsewhere.
+        localOnly.sendPort.send('backup-started');
         backupStarted.complete();
         await releaseBackup.future;
       });
       var secondFinished = false;
-      final second = wallet.store().then((_) => secondFinished = true);
-      await backupStarted.future;
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(secondFinished, isFalse);
-      releaseBackup.complete();
-      await Future.wait([first, second, wallet.store()]);
+      final second = wallet.store().then<void>((_) { secondFinished = true; });
+      final saves = Future.wait<void>([first, second]);
+      try {
+        await Future.any<void>([backupStarted.future, saves.then<void>((_) {})])
+            .timeout(const Duration(seconds: 30));
+        expect(backupStarted.isCompleted, isTrue);
+        expect(await callbackMessage, 'backup-started');
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(secondFinished, isFalse);
+      } finally {
+        if (!releaseBackup.isCompleted) releaseBackup.complete();
+        await saves;
+      }
+      await wallet.store();
       final pointer = current!;
       current = null;
       account.currentWallet = null;

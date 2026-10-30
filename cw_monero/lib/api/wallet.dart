@@ -268,6 +268,12 @@ int lastStorePointer = 0;
 int lastStoreHeight = 0;
 DateTime? _lastStoreAt;
 
+// A separate function scope keeps the UI/backup callback out of the isolate
+// message. A nested closure can otherwise capture an unsendable ReceivePort,
+// Timer or widget state from the caller even when it only references address.
+Future<bool> _storeNativeWallet(int address) =>
+    Isolate.run(() => monero.Wallet_store(Pointer.fromAddress(address)));
+
 Future<void> storeSync({bool force = false, Future<void> Function()? afterStore}) {
   final wallet = currentWallet;
   if (wallet == null) return Future<void>.error(StateError('No active Monero wallet.'));
@@ -284,7 +290,7 @@ Future<void> storeSync({bool force = false, Future<void> Function()? afterStore}
         DateTime.now().difference(lastStoreAt) < const Duration(minutes: 1)) {
       return;
     }
-    final stored = await Isolate.run(() => monero.Wallet_store(Pointer.fromAddress(address)));
+    final stored = await _storeNativeWallet(address);
     if (!stored) throw MoneroWalletException('Could not save the Monero wallet. Check disk space and file permissions.');
     // A failed write must not advance the checkpoint or suppress a later retry.
     lastStorePointer = address;

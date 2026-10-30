@@ -91,6 +91,7 @@ try {
         & (Join-Path $PSScriptRoot 'compile_graphics.ps1') -ProjectRoot $root
         flutter test test/tool/windows_secrets_test.dart `
             test/core/wallet_name_validator_test.dart `
+            test/core/windows_wallet_loading_test.dart `
             test/reactions/on_current_node_change_test.dart `
             test/reactions/check_connection_test.dart `
             test/core/monero_node_probe_test.dart --reporter expanded
