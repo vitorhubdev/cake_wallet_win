@@ -16,6 +16,7 @@ import 'package:path/path.dart' as p;
 // logged, and is deleted when the worker exits. These are real native operations,
 // not mocked responses. This does not cover mainnet sync or sending funds.
 const _resultPrefix = 'CAKE_MONERO_SMOKE ';
+String _normalizeSeed(String seed) => seed.trim().split(RegExp(r'\s+')).join(' ');
 
 Future<void> main(List<String> args) async {
   if (!Platform.isWindows) {
@@ -142,8 +143,8 @@ void _worker(String bundlePath, String temporaryPath) {
     checkWallet();
     final address = monero.Wallet_address(activeWallet!);
     require(monero.Wallet_addressValid(address, networkType), 'Invalid generated testnet address.');
-    final seed = monero.Wallet_seed(activeWallet!, seedOffset: '');
-    require(seed.trim().split(RegExp(r'\s+')).length == 25, 'Invalid generated legacy seed.');
+    final seed = _normalizeSeed(monero.Wallet_seed(activeWallet!, seedOffset: ''));
+    require(seed.split(RegExp(r'\s+')).length == 25, 'Invalid generated legacy seed.');
 
     step = 'store and close';
     require(monero.Wallet_store(activeWallet!), 'Native wallet storage failed.');
@@ -173,8 +174,14 @@ void _worker(String bundlePath, String temporaryPath) {
       networkType: networkType,
     );
     checkWallet();
-    require(monero.Wallet_address(activeWallet!) == address, 'Reopened wallet address changed.');
-    require(monero.Wallet_seed(activeWallet!, seedOffset: '') == seed, 'Reopened wallet seed changed.');
+    require(
+      monero.Wallet_address(activeWallet!).trim() == address.trim(),
+      'Reopened wallet address changed.',
+    );
+    require(
+      _normalizeSeed(monero.Wallet_seed(activeWallet!, seedOffset: '')) == seed,
+      'Reopened wallet seed changed.',
+    );
     closeWallet();
 
     stdout.writeln('$_resultPrefix${jsonEncode({
