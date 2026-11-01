@@ -1,0 +1,42 @@
+name: Cake Wallet PC source audit
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/pc-source-audit.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  sources:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact source trees and upstream history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags https://github.com/cake-tech/cake_wallet.git 4f792ca4a9981961bdc368ad34ba4c8d40c928b1
+          upstream=4f792ca4a9981961bdc368ad34ba4c8d40c928b1
+          fork=1a861d42c97298778427684018dda4346f29ffc9
+          base=$(git merge-base "$fork" "$upstream")
+          mkdir -p audit
+          git archive --format=tar.gz -o audit/fork.tar.gz "$fork"
+          git archive --format=tar.gz -o audit/upstream.tar.gz "$upstream"
+          git archive --format=tar.gz -o audit/base.tar.gz "$base"
+          printf 'fork=%s\nupstream=%s\nbase=%s\n' "$fork" "$upstream" "$base" > audit/refs.txt
+          git log --format='%H %s' "$base..$upstream" > audit/upstream-commits.txt
+          git diff --stat "$base" "$upstream" > audit/upstream-stat.txt
+          git diff --binary "$base" "$upstream" > audit/upstream.patch
+          gh api repos/vitorhubdev/cake_wallet_win/actions/jobs/124365402779/logs > audit/build16.log
+          sha256sum audit/*.tar.gz > audit/source-checksums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cake-pc-pinned-sources
+          path: audit/
+          retention-days: 7
+          if-no-files-found: error
