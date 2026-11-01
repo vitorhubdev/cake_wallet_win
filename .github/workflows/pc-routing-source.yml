@@ -1,0 +1,53 @@
+name: Prepare PC wallet routing regressions
+on:
+  push:
+    branches: [pc-final-regressions]
+    paths: [.github/workflows/pc-routing-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: source
+          ref: e6281fb166f20ff642e140c1c6d732098f7c1907
+      - name: Apply reviewed exact-source corrections
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../audit/.audit/pc_wallet_routing.py
+          cp ../audit/test/evm/pc_wallet_routing_test.dart test/evm/
+          git diff --check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Check syntax without pretending this replaces full Flutter tests
+        working-directory: source
+        run: |
+          set -euo pipefail
+          dart format --output=none cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/evm_chain_wallet_addresses.dart test/evm/pc_wallet_routing_test.dart
+          dart tool/windows_stability_checks.dart
+          git diff --exit-code -- .github pubspec_overrides.yaml tool/configure_windows_secrets.dart
+      - name: Commit only application code and its new regression tests
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git switch -c pc-routing-result
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/evm_chain_wallet_addresses.dart test/evm/pc_wallet_routing_test.dart
+          git diff --cached --check
+          git commit -m 'Keep EVM receive QR on selected chain and reject unsafe recipient aggregation' -m 'Reject unsupported multiple recipients before signing; update payment URIs when switching chains; close an RPC endpoint rejected by the chain-id guard. Full wallet-routing behavior is a required Windows and Linux release test.'
+          git push origin HEAD:refs/heads/pc-routing-result
