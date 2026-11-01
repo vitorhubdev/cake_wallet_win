@@ -29,11 +29,18 @@ jobs:
       - name: Apply only the locally reviewed checksum-pinned patch
         run: |
           python3 - <<'PY'
-          import base64,gzip,hashlib,pathlib,subprocess
+          import base64,gzip,hashlib,json,pathlib,subprocess
           root=pathlib.Path('audit/.audit/pc')
-          chunks=[(root/('part%d.b64'%i)).read_text().strip() for i in range(5)]
-          for i,chunk in enumerate(chunks):
-              print(i,len(chunk),hashlib.sha256(chunk.encode()).hexdigest())
+          corrections=json.loads((root/'transport-corrections.json').read_text())
+          chunks=[]
+          for i in range(5):
+              chunk=(root/('part%d.b64'%i)).read_text().strip()
+              repair=corrections[str(i)]
+              assert hashlib.sha256(chunk.encode()).hexdigest()==repair['sha256'], 'Unexpected transport contents'
+              for start,end,old,new in reversed(repair['edits']):
+                  assert chunk[start:end]==old
+                  chunk=chunk[:start]+new+chunk[end:]
+              chunks.append(chunk)
           patch=gzip.decompress(base64.b64decode(''.join(chunks),validate=True))
           assert hashlib.sha256(patch).hexdigest()=='675d8372d184b0f8bbe379954ba3ccfe686f8db817c5d8fcaa2f94dd9a99ece5', 'Reviewed source digest mismatch'
           assert b'diff --git a/.github/' not in patch
