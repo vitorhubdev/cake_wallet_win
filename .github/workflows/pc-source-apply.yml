@@ -1,0 +1,79 @@
+name: Validate Cake Wallet PC integration
+on:
+  push:
+    branches: [pc-integration-audit]
+    paths: [.github/workflows/pc-source-apply.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-source-transport-verification
+          path: audit/.audit/pc/
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: source
+          ref: ee85889ffda747524ae9c006e0849c1b09065730
+      - name: Apply only the locally reviewed checksum-pinned patch
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,pathlib,subprocess
+          root=pathlib.Path('audit/.audit/pc')
+          chunks=[(root/('part%d.b64'%i)).read_text().strip() for i in range(5)]
+          for i,chunk in enumerate(chunks):
+              print(i,len(chunk),hashlib.sha256(chunk.encode()).hexdigest())
+          patch=gzip.decompress(base64.b64decode(''.join(chunks),validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='675d8372d184b0f8bbe379954ba3ccfe686f8db817c5d8fcaa2f94dd9a99ece5', 'Reviewed source digest mismatch'
+          assert b'diff --git a/.github/' not in patch
+          assert b'diff --git a/scripts/pc/build_monero_linux.sh' not in patch
+          subprocess.run(['git','apply','--check','-'],input=patch,cwd='source',check=True)
+          subprocess.run(['git','apply','-'],input=patch,cwd='source',check=True)
+          subprocess.run(['git','diff','--check'],cwd='source',check=True)
+          PY
+      - name: Validate Python, shell and native Linux profile exclusions
+        working-directory: source
+        run: |
+          set -euo pipefail
+          for file in scripts/pc/*.sh; do bash -n "$file"; done
+          python3 -m py_compile scripts/pc/*.py scripts/windows/prepare_dependencies.py
+          cmake -S test/linux -B build/pc-profile-tests -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/pc-profile-tests
+          ctest --test-dir build/pc-profile-tests --output-on-failure
+          git diff --exit-code -- pubspec_overrides.yaml cw_monero/pubspec.yaml tool/configure_windows_secrets.dart windows/CMakeLists.txt scripts/pc/build_monero_linux.sh
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Parse changed Dart source and run deterministic synchronization checks
+        working-directory: source
+        run: |
+          set -euo pipefail
+          dart format --output=none cw_evm/lib/clients/evm_chain_client.dart cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/evm_chain_transaction_history.dart cw_evm/lib/pending_evm_chain_transaction.dart test/evm lib/utils/node_display_address.dart test/core/pc_node_display_address_test.dart integration_test/windows_startup_test.dart
+          dart tool/windows_stability_checks.dart
+      - name: Commit actual source, without audit transport or workflow changes
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git switch -c pc-integration-result
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          find scripts/pc -type d -name __pycache__ -prune -exec rm -rf {} +
+          git add README.md cw_core cw_evm cw_mweb integration_test lib linux res scripts/windows scripts/pc test tool windows docs/builds/CAKE_WALLET_PC.md
+          git diff --cached --check
+          git commit -m 'Introduce Cake Wallet PC 6.5.2 for Windows and Linux with XMR/EVM stability regressions' -m 'Preserve upstream ancestry and native pins; isolate Linux profiles/keyrings; keep Windows upgrade identifiers; correct EVM signed transaction identity, duplicate commit and cross-chain stale history/balance races. Keep real native/offline testnet and desktop onboarding release gates.'
+          git push origin HEAD:refs/heads/pc-integration-result
+          echo "Source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
