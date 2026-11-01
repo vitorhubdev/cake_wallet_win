@@ -1,0 +1,71 @@
+name: Validate PC XMR recovery parity
+on:
+  push:
+    branches: [pc-transaction-boundaries]
+    paths: [.github/workflows/pc-xmr-linux-parity.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4adc55187f55a4c4d0a31b4e38056c2bee760264
+      - name: Preserve Linux XMR files on ordinary errors as Windows already does
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          def change(path, substitutions):
+              p=pathlib.Path(path); s=p.read_text()
+              for old,new in substitutions:
+                  assert s.count(old)==1, 'Unexpected source context: '+path+' '+old
+                  s=s.replace(old,new)
+              p.write_text(s)
+          change('cw_monero/lib/monero_wallet_service.dart', [
+            ('if (Platform.isWindows) rethrow;', 'if (Platform.isWindows || Platform.isLinux) rethrow;'),
+            ('if (Platform.isWindows) {', 'if (Platform.isWindows || Platform.isLinux) {'),
+          ])
+          change('cw_monero/lib/monero_wallet.dart', [
+            ('// Do not discard a Windows cache, TX keys or Polyseed because of a height', '// Do not discard a desktop cache, TX keys or Polyseed because of a height'),
+            ('if (!Platform.isWindows) {', 'if (!Platform.isWindows && !Platform.isLinux) {'),
+            ('if (Platform.isWindows) {', 'if (Platform.isWindows || Platform.isLinux) {'),
+            ('// NOTE: this is realistically only required on windows.\n      // That\'s why we await it only on that platform - other platforms actually understand\n      // the concept of a file properly...', '// Desktop renames must await native persistence and handle release before\n      // copying files. POSIX unlink semantics do not make concurrent writes safe.'),
+          ])
+          change('lib/core/wallet_loading_service.dart', [
+            ('// Windows XMR open failures (permissions, a lock, password or storage)', '// Desktop XMR open failures (permissions, a lock, password or storage)'),
+            ('if (Platform.isWindows && type == WalletType.monero) rethrow;', 'if ((Platform.isWindows || Platform.isLinux) && type == WalletType.monero) rethrow;'),
+          ])
+          change('test/core/windows_wallet_loading_test.dart', [
+            ("group('Windows Monero load failure preserves user control'", "group('PC Monero load failure preserves user control'"),
+            ('skip: !Platform.isWindows', 'skip: !Platform.isWindows && !Platform.isLinux'),
+          ])
+          p=pathlib.Path('docs/builds/CAKE_WALLET_PC.md')
+          p.write_text(p.read_text()+'''\n## Recuperação não destrutiva em ambos os sistemas\n\nAs proteções contra remoção automática do cache por erros genéricos de abertura e por heurísticas de altura se aplicam a Windows e Linux. Fechamentos nativos antes de renomear arquivos são aguardados nos dois sistemas. Os testes de falha de carregamento verificam a preservação do erro original, sem coleta de seeds nem abertura implícita de outras carteiras.\n''')
+          PY
+          git diff --check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Check source syntax and existing concurrency regression suite
+        run: |
+          set -euo pipefail
+          dart format --output=none cw_monero/lib/monero_wallet.dart cw_monero/lib/monero_wallet_service.dart lib/core/wallet_loading_service.dart test/core/windows_wallet_loading_test.dart
+          dart tool/windows_stability_checks.dart
+          git diff --exit-code -- .github pubspec_overrides.yaml tool/configure_windows_secrets.dart
+      - name: Commit source and parity tests without weakening release gates
+        run: |
+          set -euo pipefail
+          git switch -c pc-xmr-parity-result
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_monero/lib/monero_wallet.dart cw_monero/lib/monero_wallet_service.dart lib/core/wallet_loading_service.dart test/core/windows_wallet_loading_test.dart docs/builds/CAKE_WALLET_PC.md
+          git diff --cached --check
+          git commit -m 'Preserve XMR wallet data on Linux open and synchronization errors' -m 'Extend the existing Windows non-destructive recovery policy and awaited native closure to Linux. Enable the same wallet-loading regressions on both PC platforms.'
+          git push origin HEAD:refs/heads/pc-xmr-parity-result
