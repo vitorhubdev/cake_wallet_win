@@ -1,0 +1,32 @@
+name: Supersede reviewed PC candidate
+on:
+  push:
+    branches: [pc-final-regressions]
+    paths: [.github/workflows/pc-supersede-build.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  supersede:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only the older release candidate, preserving the separate native build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41350661267 > /tmp/run.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('/tmp/run.json'))
+          assert r['head_sha']=='e6281fb166f20ff642e140c1c6d732098f7c1907'
+          assert r['head_branch']=='main'
+          assert r['path']=='.github/workflows/pc-release.yml'
+          assert r['head_repository']['full_name']=='vitorhubdev/cake_wallet_win'
+          PY
+          state=$(jq -r .status /tmp/run.json)
+          if [ "$state" != completed ]; then
+            gh api --method POST repos/vitorhubdev/cake_wallet_win/actions/runs/41350661267/cancel
+          fi
+          echo 'Only the outdated PC release candidate was superseded; Linux native run 41347221931 remains untouched.' >> "$GITHUB_STEP_SUMMARY"
