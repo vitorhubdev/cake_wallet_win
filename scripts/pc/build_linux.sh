@@ -38,7 +38,7 @@ if [[ $stage == all || $stage == generate ]]; then
   dart run build_runner build --delete-conflicting-outputs
   dart run tool/generate_localization.dart
   python3 scripts/pc/compile_graphics.py
-  flutter test test/tool/windows_secrets_test.dart test/core/wallet_name_validator_test.dart test/reactions/on_current_node_change_test.dart test/reactions/check_connection_test.dart test/core/pc_node_display_address_test.dart test/core/monero_node_probe_test.dart test/evm --reporter expanded
+  flutter test test/tool/windows_secrets_test.dart test/core/wallet_name_validator_test.dart test/core/windows_wallet_loading_test.dart test/reactions/on_current_node_change_test.dart test/reactions/check_connection_test.dart test/core/pc_node_display_address_test.dart test/core/monero_node_probe_test.dart test/evm --reporter expanded
   (cd cw_core && flutter test test/amount --reporter expanded)
 fi
 if [[ $stage == all || $stage == build ]]; then
