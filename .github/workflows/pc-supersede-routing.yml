@@ -1,0 +1,30 @@
+name: Supersede older PC transaction candidate
+on:
+  push:
+    branches: [pc-transaction-boundaries]
+    paths: [.github/workflows/pc-supersede-routing.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  supersede:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only the candidate missing the final transaction boundaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41351860785 > /tmp/run.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('/tmp/run.json'))
+          assert r['head_sha']=='6b81cad7f25b1a9e6e683b0a99c1ab9e020530a0'
+          assert r['head_branch']=='main' and r['path']=='.github/workflows/pc-release.yml'
+          assert r['head_repository']['full_name']=='vitorhubdev/cake_wallet_win'
+          PY
+          if [ "$(jq -r .status /tmp/run.json)" != completed ]; then
+            gh api --method POST repos/vitorhubdev/cake_wallet_win/actions/runs/41351860785/cancel
+          fi
+          echo 'Superseded older app candidate only. Initial Linux native build remains running.' >> "$GITHUB_STEP_SUMMARY"
