@@ -32,7 +32,7 @@ jobs:
           git log --format='%H %s' "$base..$upstream" > audit/upstream-commits.txt
           git diff --stat "$base" "$upstream" > audit/upstream-stat.txt
           git diff --binary "$base" "$upstream" > audit/upstream.patch
-          gh api repos/vitorhubdev/cake_wallet_win/actions/jobs/124365402779/logs > audit/build16.log
+          gh api --allow-escape-sequences repos/vitorhubdev/cake_wallet_win/actions/jobs/124365402779/logs > audit/build16.log || printf 'Log retrieval failed\n' > audit/build16-log-unavailable.txt
           sha256sum audit/*.tar.gz > audit/source-checksums.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
