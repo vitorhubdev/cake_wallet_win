@@ -100,3 +100,7 @@ installation/removal. The tests use disposable unfunded wallets and synthetic
 RPC responses. They do not establish mainnet payments, all hardware wallets,
 all commercial integrations, long-running live-node behavior, or absence of all
 bugs. Test results are authoritative only after the corresponding run succeeds.
+
+## Proteções adicionais de transações EVM
+
+O QR de recebimento acompanha a rede selecionada. Envios com vários destinatários são recusados, em vez de somar os valores para um único endereço. Tokens são resolvidos por contrato e rede, não apenas pelo símbolo; diferenças de casas decimais são rejeitadas. A preparação da assinatura é invalidada quando a carteira muda de rede, conexão ou é fechada. Memos de transferências nativas usam UTF-8 e entram na estimativa de gas; memos arbitrários em transferências ERC20 são recusados para preservar o calldata ABI. Esses cenários são testes obrigatórios do CI, sem fundos reais.
