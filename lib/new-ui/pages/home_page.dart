@@ -139,8 +139,9 @@ class _NewHomePageState extends State<NewHomePage> with RouteAware {
                             TopBar(
                               key: ValueKey(widget.dashboardViewModel.wallet.id),
                               dashboardViewModel: widget.dashboardViewModel,
-                              showConnectionStatus: !(Platform.isWindows &&
-                                  widget.dashboardViewModel.wallet.type == WalletType.monero),
+                              showConnectionStatus: !((Platform.isWindows || Platform.isLinux) &&
+                                  (widget.dashboardViewModel.wallet.type == WalletType.monero ||
+                                  widget.dashboardViewModel.isEVMWallet)),
                               onLightningSwitchPress: () {
                                 widget.dashboardViewModel.toggleLightningMode();
                               },
@@ -164,8 +165,9 @@ class _NewHomePageState extends State<NewHomePage> with RouteAware {
                                 });
                               },
                             ),
-                            if (Platform.isWindows &&
-                                widget.dashboardViewModel.wallet.type == WalletType.monero)
+                            if ((Platform.isWindows || Platform.isLinux) &&
+                                (widget.dashboardViewModel.wallet.type == WalletType.monero ||
+                                  widget.dashboardViewModel.isEVMWallet))
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 18),
                                 child: WindowsMoneroConnectionCard(

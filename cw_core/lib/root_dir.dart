@@ -39,7 +39,7 @@ void copyDirectory(Directory source, Directory destination) {
 }
 
 Future<void> linuxSymlinkSharedPreferences() async {
-  if (!Platform.isLinux) return; // nuh-uh
+  if (!Platform.isLinux || const bool.fromEnvironment('CAKE_PC_PROFILE')) return;
   final dataHome = Platform.environment["XDG_DATA_HOME"] ??
       p.join(Platform.environment["HOME"] ?? "", ".local", "share");
   var cakeNames = ['com.example.cake_wallet', 'cake_wallet'];
@@ -79,6 +79,17 @@ Future<Directory> getAppDir() async {
   } else {
     if (Platform.isWindows) {
       dir = await getApplicationSupportDirectory();
+    } else if (Platform.isLinux && const bool.fromEnvironment('CAKE_PC_PROFILE')) {
+      final xdg = Platform.environment['XDG_CONFIG_HOME'];
+      final home = Platform.environment['HOME'];
+      final config = xdg != null && p.isAbsolute(xdg)
+          ? xdg
+          : (home != null && p.isAbsolute(home) ? p.join(home, '.config') : null);
+      if (config == null) {
+        throw StateError('An absolute HOME or XDG_CONFIG_HOME is required for Cake Wallet PC.');
+      }
+      dir = Directory(p.join(config, 'cake_wallet_pc'));
+      await dir.create(recursive: true);
     } else if (Platform.isLinux) {
       String? appDirPath;
       try {

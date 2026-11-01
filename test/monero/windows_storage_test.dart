@@ -7,14 +7,16 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cw_monero/api/account_list.dart' as account;
 import 'package:cw_monero/api/wallet.dart' as wallet;
+import 'package:cw_monero/api/windows_wallet_path.dart';
 import 'package:monero/monero.dart' as native;
 import 'package:monero/src/monero.dart' as wrappers;
 
 void main() {
   final bundle = Platform.environment['CAKE_MONERO_TEST_BUNDLE'];
-  group('packaged Windows Monero storage API', () {
+  group('packaged desktop Monero storage API', () {
     late Directory temporary;
     late String walletPath;
+    late String nativeWalletPath;
     late String password;
     late Pointer<Void> manager;
     Pointer<Void>? current;
@@ -23,15 +25,17 @@ void main() {
     setUp(() {
       previousDirectory = Directory.current.path;
       Directory.current = bundle!;
-      native.libPath = '$bundle${Platform.pathSeparator}libmonero_wallet2_api_c.dll';
+      native.libPath = '$bundle${Platform.pathSeparator}'
+          'libmonero_wallet2_api_c.${Platform.isWindows ? 'dll' : 'so'}';
       native.printStarts = false;
       native.WalletManagerFactory_setLogLevel(-1);
       temporary = Directory.systemTemp.createTempSync('cake-storage-teste-');
       final directory = Directory('${temporary.path}/carteira com espaço')..createSync();
       walletPath = '${directory.path}/testnet';
+      nativeWalletPath = nativeMoneroWalletPath(walletPath);
       password = List.generate(32, (_) => Random.secure().nextInt(256).toRadixString(16)).join();
       manager = native.WalletManagerFactory_getWalletManager();
-      current = native.WalletManager_createWallet(manager, path: walletPath,
+      current = native.WalletManager_createWallet(manager, path: nativeWalletPath,
           password: password, language: 'English', networkType: 1);
       expect(current!.address, isNot(0));
       expect(native.Wallet_status(current!), 0);
@@ -83,7 +87,7 @@ void main() {
       current = null;
       account.currentWallet = null;
       expect(native.WalletManager_closeWallet(manager, pointer, false), isTrue);
-      current = native.WalletManager_openWallet(manager, path: walletPath, password: password, networkType: 1);
+      current = native.WalletManager_openWallet(manager, path: nativeWalletPath, password: password, networkType: 1);
       expect(native.Wallet_status(current!), 0);
       account.currentWallet = wrappers.MoneroWallet(current!);
       expect(native.Wallet_getCacheAttribute(current!, key: 'cake.stability.probe'), 'persisted');
@@ -101,5 +105,5 @@ void main() {
       await wallet.store();
       expect(File(walletPath).existsSync(), isTrue);
     });
-  }, skip: !Platform.isWindows || bundle == null);
+  }, skip: !(Platform.isWindows || Platform.isLinux) || bundle == null);
 }

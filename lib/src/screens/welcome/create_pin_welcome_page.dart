@@ -76,7 +76,7 @@ class CreatePinWelcomePage extends BasePage {
 
   @override
   Widget body(BuildContext context) {
-    if (Platform.isWindows) {
+    if ((Platform.isWindows || Platform.isLinux)) {
       return WindowsWelcomePanel(isWalletPasswordDirectInput: isWalletPasswordDirectInput);
     }
     String welcomeImage;

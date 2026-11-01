@@ -1,3 +1,19 @@
+# Cake Wallet PC
+
+Community desktop fork for **Windows x64 and Linux x64**, based on upstream
+**Cake Wallet 6.5.2**. Not an official Cake Labs distribution.
+
+PC release artifacts: Windows installer `.exe` and complete portable `.zip`;
+Linux native `.deb` and complete portable `.tar.gz`. Only validated artifacts
+are published. Existing Windows storage identifiers are preserved across the
+visible rename; Linux has a separate profile and keyring namespace.
+
+Read [PC installation, compatibility and validation scope](docs/builds/CAKE_WALLET_PC.md).
+The original upstream documentation below describes capabilities of the broader
+Cake Wallet project, not a promise that every mobile-only feature exists here.
+
+---
+
 <div align="center">
 
 ![logo](.github/assets/cake-wallet-gh-header-2.svg)

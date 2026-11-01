@@ -36,7 +36,10 @@ MONERO_COMMIT = "33671871de3d51696b66ffb3bd94f744e26974f6"
 
 def sha256(path: Path) -> str:
     with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
+        digest = hashlib.sha256()
+        for block in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(block)
+        return digest.hexdigest()
 
 
 def download(url: str, digest: str) -> Path:
@@ -111,10 +114,10 @@ def verify_monero() -> dict:
     return monero_metadata
 
 
-def main(*, sources_only: bool = False) -> None:
+def main(*, sources_only: bool = False, platform: str = "windows") -> None:
     # CI prepares Dart packages while the independent native job is compiling.
     # build.ps1 always verifies the completed artifact again before compilation.
-    metadata = {} if sources_only else {"monero_c": verify_monero()}
+    metadata = {} if sources_only else {"monero_c": (verify_monero() if platform == "windows" else verify_linux_monero())}
     for name, (url, digest) in DEPENDENCIES.items():
         print(f"Preparing {name} (SHA-256 {digest})", flush=True)
         archive = download(url, digest)
@@ -137,24 +140,44 @@ def main(*, sources_only: bool = False) -> None:
             target.unlink(missing_ok=True)
             target.write_bytes(overrides)
 
-    native = ROOT / "build/windows-native/mweb"
-    pthread = native / "libwinpthread-1.dll"
-    if not (native / "mweb.dll").is_file() or not pthread.is_file():
-        raise FileNotFoundError("Build/download the windows-native artifact before preparing dependencies")
+    native = ROOT / f"build/{platform}-native/mweb"
+    required = ["mweb.dll", "mweb.h", "libwinpthread-1.dll"] if platform == "windows" else ["libmweb.so", "libmweb.h"]
+    if not all((native / name).is_file() for name in required):
+        raise FileNotFoundError(f"Build/download the {platform}-native MWEB artifact first")
+    metadata["mweb"] = {"files": {name: sha256(native/name) for name in required}}
     (native.parent / "dependency-manifest.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+
+def verify_linux_monero() -> dict:
+    directory = ROOT / "build/linux-native/monero"
+    metadata = json.loads((directory / "native-build-info.json").read_text())
+    if metadata.get("commit") != MONERO_COMMIT or metadata.get("target") != "x86_64-linux-gnu" or metadata.get("buildType") != "Release":
+        raise ValueError("Linux Monero artifact revision/target/configuration mismatch")
+    files = metadata.get("files", {})
+    if set(files) != {"libmonero_wallet2_api_c.so"}:
+        raise ValueError("Unexpected native Linux library manifest")
+    for name, digest in files.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", digest) or sha256(directory/name) != digest:
+            raise ValueError("Linux Monero artifact digest mismatch")
+    overrides = (ROOT / "pubspec_overrides.yaml").read_text()
+    block = re.search(r"(?ms)^  monero:\n(.*?)(?=^  \S|\Z)", overrides)
+    if not block or MONERO_COMMIT not in block[1]:
+        raise ValueError("Linux native revision differs from the configured Dart wrapper")
+    return metadata
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--platform", choices=["windows", "linux"], default="windows")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--sources-only", action="store_true", help="Prepare package sources while the native Monero job runs")
     modes.add_argument("--verify-monero", action="store_true", help="Verify the native artifact and record it in the dependency manifest")
     args = parser.parse_args()
     if args.verify_monero:
-        native_metadata = verify_monero()
-        manifest = ROOT / "build/windows-native/dependency-manifest.json"
+        native_metadata = verify_monero() if args.platform == "windows" else verify_linux_monero()
+        manifest = ROOT / f"build/{args.platform}-native/dependency-manifest.json"
         metadata = json.loads(manifest.read_text(encoding="utf-8"))
         metadata["monero_c"] = native_metadata
         manifest.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     else:
-        main(sources_only=args.sources_only)
+        main(sources_only=args.sources_only, platform=args.platform)

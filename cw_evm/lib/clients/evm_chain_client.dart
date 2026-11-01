@@ -17,16 +17,32 @@ import 'package:cw_evm/.secrets.g.dart' as secrets;
 import 'package:cw_evm/utils/evm_chain_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hex/hex.dart' as hex;
+import 'package:http/http.dart' as http;
 import 'package:web3dart/web3dart.dart';
 
 import '../contract/erc20.dart';
 
 class EVMChainClient {
-  late final client = ProxyWrapper().getHttpIOClient();
+  http.Client? _httpClient;
+  http.Client get client => _httpClient ??= ProxyWrapper().getHttpIOClient();
   Web3Client? _client;
   final int _chainId;
 
-  EVMChainClient({required int chainId}) : _chainId = chainId;
+  EVMChainClient({required int chainId, Web3Client? rpcClient, http.Client? httpClient})
+      : _chainId = chainId, _client = rpcClient, _httpClient = httpClient;
+
+  /// A responsive server is not necessarily the requested Ethereum network.
+  /// Discard replies from a connection that was replaced while querying it.
+  Future<bool> verifyChainId({Duration timeout = const Duration(seconds: 10)}) async {
+    final rpc = _client;
+    if (rpc == null) return false;
+    try {
+      final actual = await rpc.getChainId().timeout(timeout);
+      return identical(_client, rpc) && actual == BigInt.from(chainId);
+    } catch (_) {
+      return false;
+    }
+  }
 
   //! Can be overridden by child classes
 
@@ -173,6 +189,7 @@ class EVMChainClient {
   //! Common methods across all child classes
 
   bool connect(Node node) {
+    stop();
     try {
       Uri? rpcUri;
       bool isModifiedNodeUri = false;
@@ -207,7 +224,7 @@ class EVMChainClient {
 
       return true;
     } catch (e) {
-      printV('Error connecting to node ${node.uriRaw}: ${e.toString()}');
+      printV('Unable to connect to the configured EVM RPC endpoint.');
       return false;
     }
   }
@@ -766,7 +783,16 @@ class EVMChainClient {
   }
 
   void stop() {
-    _client?.dispose();
+    final rpc = _client;
+    _client = null;
+    if (rpc != null) {
+      unawaited(rpc.dispose().catchError((Object _) {
+        printV('EVM RPC stream cleanup failed.');
+      }));
+    }
+    // Web3Client.dispose closes filters/streams, not the HTTP transport.
+    _httpClient?.close();
+    _httpClient = null;
   }
 
   Web3Client? getWeb3Client() {

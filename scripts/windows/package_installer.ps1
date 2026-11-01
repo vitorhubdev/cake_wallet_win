@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '6.5.0',
+    [string]$Version = '6.5.2',
     [ValidateRange(1, 65535)]
     [int]$BuildNumber = 1,
     [string]$BundlePath = 'build\windows\x64\runner\Release',
@@ -62,7 +62,7 @@ if (-not $compiler) {
 }
 Write-Output "Using Inno Setup $((Get-Item -LiteralPath $compiler).VersionInfo.FileVersion)"
 New-Item -ItemType Directory -Path $output -Force | Out-Null
-$installer = Join-Path $output "CakeWallet-Windows-x64-$Version-$BuildNumber-Setup.exe"
+$installer = Join-Path $output "CakeWalletPC-Windows-x64-$Version-$BuildNumber-Setup.exe"
 if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
 
 & $compiler '/Qp' "/DMyAppVersion=$Version" "/DMyBuildNumber=$BuildNumber" `

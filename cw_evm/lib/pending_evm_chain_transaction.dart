@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cw_core/amount/money.dart';
@@ -12,11 +13,11 @@ class PendingEVMChainTransaction with PendingTransaction {
 
   PendingEVMChainTransaction({
     required this.sendTransaction,
-    required this.signedTransaction,
+    required Uint8List signedTransaction,
     required this.fee,
     required this.amount,
     this.isInfiniteApproval = false,
-  });
+  }) : signedTransaction = Uint8List.fromList(signedTransaction).asUnmodifiableView();
 
   @override
   String get amountFormatted {
@@ -31,7 +32,25 @@ class PendingEVMChainTransaction with PendingTransaction {
   final Money fee;
 
   @override
-  Future<void> commit() async => await sendTransaction();
+  Future<void> commit() {
+    final pending = _commitInFlight;
+    if (pending != null) return pending;
+    // Retain successful completion: repeated clicks never rebroadcast this object.
+    // A failure is surfaced, not automatically retried. Only a new explicit call
+    // may retry the same signed transaction (and therefore the same nonce/hash).
+    late final Future<void> operation;
+    operation = Future<void>.sync(() async { await sendTransaction(); }).then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {
+        if (identical(_commitInFlight, operation)) _commitInFlight = null;
+        Error.throwWithStackTrace(error, stack);
+      },
+    );
+    _commitInFlight = operation;
+    return operation;
+  }
+
+  Future<void>? _commitInFlight;
 
   @override
   String get feeFormatted => fee.toStringWithSymbol(fractionalDigits: 10);
@@ -43,22 +62,10 @@ class PendingEVMChainTransaction with PendingTransaction {
   String get hex => bytesToHex(signedTransaction, include0x: true);
 
   @override
-  String get id {
-    final String eip1559Hex = '0x02${hex.substring(2)}';
-    final Uint8List bytes = Uint8List.fromList(Hex.HEX.decode(eip1559Hex.substring(2)));
-
-    final txid = keccak256(bytes);
-
-    return '0x${Hex.HEX.encode(txid)}';
-  }
+  String get id => '0x${Hex.HEX.encode(keccak256(signedTransaction))}';
 
   @override
-  String? get evmTxHashFromRawHex {
-    final no0x = hex.startsWith('0x') ? hex.substring(2) : hex;
-    final bytes = Uint8List.fromList(Hex.HEX.decode(no0x));
-    final digest = keccak256(bytes);
-    return '0x${Hex.HEX.encode(digest)}';
-  }
+  String? get evmTxHashFromRawHex => id;
 
   @override
   Future<Map<String, String>> commitUR() => throw UnimplementedError();

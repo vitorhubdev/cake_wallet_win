@@ -19,8 +19,8 @@ import 'package:path/path.dart' as p;
 const _resultPrefix = 'CAKE_MONERO_SMOKE ';
 
 Future<void> main(List<String> args) async {
-  if (!Platform.isWindows) {
-    throw UnsupportedError('This test requires the packaged Windows x64 library.');
+  if (!(Platform.isWindows || Platform.isLinux)) {
+    throw UnsupportedError('This test requires the packaged Windows or Linux x64 library.');
   }
   if (args.length == 3 && args.first == '--worker') {
     _worker(args[1], args[2]);
@@ -31,7 +31,7 @@ Future<void> main(List<String> args) async {
   }
 
   final bundle = Directory(args.single).absolute;
-  final library = File(p.join(bundle.path, 'libmonero_wallet2_api_c.dll'));
+  final library = File(p.join(bundle.path, Platform.isWindows ? 'libmonero_wallet2_api_c.dll' : 'libmonero_wallet2_api_c.so'));
   if (!library.existsSync()) throw StateError('The packaged Monero DLL is missing.');
   final temporary = await Directory.systemTemp.createTemp('cake-monero-smoke-');
   Process? worker;
@@ -49,7 +49,9 @@ Future<void> main(List<String> args) async {
       // Windows' dependent-DLL resolution must see the distributed DLLs.
       // smoke_test.ps1 separately verifies them without relying on build PATH.
       workingDirectory: bundle.path,
-      environment: {'PATH': '${bundle.path};${Platform.environment['PATH'] ?? ''}'},
+      environment: Platform.isWindows
+          ? {'PATH': '${bundle.path};${Platform.environment['PATH'] ?? ''}'}
+          : {'LD_LIBRARY_PATH': '${bundle.path}:${Platform.environment['LD_LIBRARY_PATH'] ?? ''}'},
     );
     final output = worker.stdout
         .transform(const Utf8Decoder(allowMalformed: true))
@@ -109,7 +111,7 @@ void _worker(String bundlePath, String temporaryPath) {
   }
 
   try {
-    monero.libPath = p.join(bundlePath, 'libmonero_wallet2_api_c.dll');
+    monero.libPath = p.join(bundlePath, Platform.isWindows ? 'libmonero_wallet2_api_c.dll' : 'libmonero_wallet2_api_c.so');
     monero.printStarts = false;
     monero.debugStart = null;
     monero.debugEnd = null;

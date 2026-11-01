@@ -1,0 +1,12 @@
+name: MWebFlutter
+description: Bindings generated from the Linux MWEB build shipped by Cake Wallet PC.
+output: lib/generated_bindings.g.dart
+headers:
+  entry-points:
+    - ../build/linux-native/mweb/libmweb.h
+functions:
+  include:
+    - StartServer
+    - StopServer
+    - Addresses
+    - FreeString

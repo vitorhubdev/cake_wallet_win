@@ -17,6 +17,7 @@ import 'package:cw_core/transaction_direction.dart';
 import 'package:cw_core/transaction_priority.dart';
 import 'package:cw_core/utils/homoglyph_normalizer.dart';
 import 'package:cw_core/utils/print_verbose.dart';
+import 'package:cw_core/utils/async_serial_queue.dart';
 import 'package:cw_core/wallet_addresses.dart';
 import 'package:cw_core/wallet_base.dart';
 import 'package:cw_core/wallet_info.dart';
@@ -192,13 +193,16 @@ abstract class EVMChainWalletBase
   /// Transactions are stored in separate files per network (based on chainId), so switching
   /// networks automatically loads transactions from the correct file.
   @action
-  Future<void> selectChain(int chainId, {required Node node}) async {
+  Future<void> selectChain(int chainId, {required Node node}) => _chainChanges.run(() async {
+    if (_closed) return;
     if (EvmChainRegistry().getChainConfig(chainId) == null) {
       throw BadChainIdException('Chain config not found for chainId: $chainId');
     }
 
     if (selectedChainId == chainId) return;
 
+    _connectionGeneration++;
+    _transactionsUpdateTimer?.cancel();
     _client.stop();
 
     balance.clear();
@@ -208,6 +212,7 @@ abstract class EVMChainWalletBase
 
     // Automatically connect to node for the selected chain
     await connectToNode(node: node);
+    if (_closed) return;
 
     // Reload ERC20 tokens for the new chain
     await initErc20Tokens();
@@ -218,7 +223,7 @@ abstract class EVMChainWalletBase
     await save();
 
     await startSync();
-  }
+  });
 
   Future<void> addInitialTokens() async {
     final initialErc20Tokens = EVMChainDefaultTokens.getDefaultTokensByChainId(selectedChainId);
@@ -357,20 +362,28 @@ abstract class EVMChainWalletBase
     };
   }
 
+  final AsyncSerialQueue _saveQueue = AsyncSerialQueue();
+  final AsyncSerialQueue _chainChanges = AsyncSerialQueue();
+  final Map<int, Future<void>> _balanceUpdates = {};
+  bool _closed = false;
+  int _connectionGeneration = 0;
+
   @override
   Future<bool> checkNodeHealth() async {
+    final client = _client;
     try {
-      await _client.getBalance(_evmChainPrivateKey.address);
+      if (!await client.verifyChainId()) return false;
+      await client.getBalance(_evmChainPrivateKey.address);
 
       final usdcAddress = _getUSDCContractAddress();
       if (usdcAddress != null) {
         final usdcContractAddress =
             Erc20Token(name: "USDC", symbol: "USDC", contractAddress: usdcAddress, decimal: 6);
 
-        await _client.fetchERC20Balances(_evmChainPrivateKey.address, usdcContractAddress);
+        await client.fetchERC20Balances(_evmChainPrivateKey.address, usdcContractAddress);
       }
 
-      return true;
+      return identical(client, _client);
     } catch (e) {
       return false;
     }
@@ -620,10 +633,12 @@ abstract class EVMChainWalletBase
       await _getEstimatedFees(priority);
 
   Future<void> _getEstimatedFees(TransactionPriority? priority) async {
+    final generation = _connectionGeneration;
     final nativeFee = await _getNativeTxFee(priority);
+    if (_closed || generation != _connectionGeneration) return;
     nativeTxEstimatedFee = nativeFee.toString();
-
     final erc20Fee = await _getErc20TxFee(priority);
+    if (_closed || generation != _connectionGeneration) return;
     erc20TxEstimatedFee = erc20Fee.toString();
   }
 
@@ -792,45 +807,60 @@ abstract class EVMChainWalletBase
 
   @override
   Future<void> close({bool shouldCleanup = false}) async {
-    _client.stop();
+    _closed = true;
+    _connectionGeneration++;
     _transactionsUpdateTimer?.cancel();
+    _client.stop();
+    await _chainChanges.idle;
+    await _saveQueue.idle;
   }
 
   @action
   @override
   Future<void> connectToNode({required Node node}) async {
+    if (_closed) return;
+    final generation = ++_connectionGeneration;
+    final client = _client;
     try {
       syncStatus = ConnectingSyncStatus();
 
-      final isConnected = _client.connect(node);
+      final isConnected = client.connect(node);
+      final correctChain = isConnected && await client.verifyChainId();
+      if (generation != _connectionGeneration || !identical(client, _client)) return;
 
-      if (!isConnected) {
+      if (!correctChain) {
         throw ConnectionException("${walletInfo.type.name.toUpperCase()} Node connection failed");
       }
 
-      _client.setListeners(_evmChainPrivateKey.address, _onNewTransaction);
+      client.setListeners(_evmChainPrivateKey.address, _onNewTransaction);
 
       _setTransactionUpdateTimer();
 
       syncStatus = ConnectedSyncStatus();
     } catch (e) {
-      syncStatus = FailedSyncStatus();
+      if (generation == _connectionGeneration && identical(client, _client)) {
+        syncStatus = FailedSyncStatus();
+      }
     }
   }
 
   @action
   @override
   Future<void> startSync() async {
+    if (_closed) return;
+    final generation = _connectionGeneration;
     try {
       syncStatus = AttemptingSyncStatus();
 
       // Verify node health before attempting to sync
       final isHealthy = await checkNodeHealth();
+      if (_closed || generation != _connectionGeneration) return;
       if (!isHealthy) {
         syncStatus = FailedSyncStatus();
         return;
       }
       await _updateBalance();
+      if (_closed || generation != _connectionGeneration) return;
 
       await Future.wait([
         _updateTransactions(),
@@ -839,9 +869,9 @@ abstract class EVMChainWalletBase
         ), // We're using medium priority for default estimation
       ]);
 
-      syncStatus = SyncedSyncStatus();
+      if (!_closed && generation == _connectionGeneration) syncStatus = SyncedSyncStatus();
     } catch (e) {
-      syncStatus = FailedSyncStatus();
+      if (!_closed && generation == _connectionGeneration) syncStatus = FailedSyncStatus();
     }
   }
 
@@ -1126,14 +1156,20 @@ abstract class EVMChainWalletBase
         return;
       }
 
+      if (_closed) return;
+      _isTransactionUpdating = true;
+      final generation = _connectionGeneration;
+      final client = _client;
       final isProviderEnabled = await checkIfScanProviderIsEnabled();
-
-      if (!isProviderEnabled) {
+      if (!isProviderEnabled || _closed || generation != _connectionGeneration || !identical(client, _client)) {
+        _isTransactionUpdating = false;
         return;
       }
-
-      _isTransactionUpdating = true;
       final transactions = await fetchTransactions();
+      if (_closed || generation != _connectionGeneration || !identical(client, _client)) {
+        _isTransactionUpdating = false;
+        return;
+      }
       transactionHistory.addMany(transactions);
       await transactionHistory.save();
       _isTransactionUpdating = false;
@@ -1148,12 +1184,17 @@ abstract class EVMChainWalletBase
       return {};
     }
 
+    final client = _client;
+    final generation = _connectionGeneration;
+    final tokens = balance.keys.whereType<Erc20Token>().toList();
     final List<EVMChainTransactionModel> transactions = [];
     final List<Future<List<EVMChainTransactionModel>>> erc20TokensTransactions = [];
 
     final address = _evmChainPrivateKey.address.hex;
-    final externalTransactions = await _client.fetchTransactions(address);
-    final internalTransactions = await _client.fetchInternalTransactions(address);
+    final externalTransactions = await client.fetchTransactions(address);
+    if (!_sessionCurrent(generation, client)) return {};
+    final internalTransactions = await client.fetchInternalTransactions(address);
+    if (!_sessionCurrent(generation, client)) return {};
 
     for (var transaction in externalTransactions) {
       final evmSignatureName = analyzeTransaction(transaction.input);
@@ -1164,9 +1205,9 @@ abstract class EVMChainWalletBase
       }
     }
 
-    for (var token in balance.keys) {
+    for (var token in tokens) {
       if (token is Erc20Token) {
-        erc20TokensTransactions.add(_client.fetchTransactions(
+        erc20TokensTransactions.add(client.fetchTransactions(
           address,
           contractAddress: token.contractAddress,
         ));
@@ -1174,6 +1215,7 @@ abstract class EVMChainWalletBase
     }
 
     final tokensTransaction = await Future.wait(erc20TokensTransactions);
+    if (!_sessionCurrent(generation, client)) return {};
     transactions.addAll(tokensTransaction.expand((element) => element));
     transactions.addAll(internalTransactions);
 
@@ -1239,17 +1281,16 @@ abstract class EVMChainWalletBase
   }
 
   @override
-  Future<void> save() async {
+  Future<void> save() => _saveQueue.run(() async {
     if (!(await WalletKeysFile.hasKeysFile(walletInfo.name, walletInfo.type))) {
       await saveKeysFile(_password, encryptionFileUtils);
-      saveKeysFile(_password, encryptionFileUtils, true);
+      await saveKeysFile(_password, encryptionFileUtils, true);
     }
-
     await walletAddresses.updateAddressesInBox();
     final path = await makePath();
     await encryptionFileUtils.write(path: path, password: _password, data: toJSON());
     await transactionHistory.save();
-  }
+  });
 
   @override
   String? get seed => _mnemonic;
@@ -1275,21 +1316,24 @@ abstract class EVMChainWalletBase
         'selected_chain_id': selectedChainId,
       });
 
-  Future<void> _updateBalance() async {
-    balance[currency] = await _fetchEVMChainBalance();
-
-    await _fetchErc20Balances();
-    await save();
+  Future<void> _updateBalance() {
+    if (_closed) return Future<void>.value();
+    final generation = _connectionGeneration;
+    return _balanceUpdates[generation] ??= _refreshBalance(generation, _client)
+        .whenComplete(() => _balanceUpdates.remove(generation));
   }
 
-  Future<EVMChainERC20Balance> _fetchEVMChainBalance() async {
-    try {
-      final balance = await _client.getBalance(_evmChainPrivateKey.address);
+  bool _sessionCurrent(int generation, EVMChainClient client) =>
+      !_closed && generation == _connectionGeneration && identical(client, _client);
 
-      return EVMChainERC20Balance(Money(balance.getInWei, currency));
-    } catch (_) {
-      return balance[currency] ?? EVMChainERC20Balance(Money.zero(currency));
-    }
+  Future<void> _refreshBalance(int generation, EVMChainClient client) async {
+    final coin = currency;
+    final value = await client.getBalance(_evmChainPrivateKey.address)
+        .timeout(const Duration(seconds: 20));
+    if (!_sessionCurrent(generation, client)) return;
+    balance[coin] = EVMChainERC20Balance(Money(value.getInWei, coin));
+    await _fetchErc20Balances(generation, client);
+    if (_sessionCurrent(generation, client)) await save();
   }
 
   bool _isTokenMatchingChain(Erc20Token token) {
@@ -1305,7 +1349,7 @@ abstract class EVMChainWalletBase
     return token.tag?.toLowerCase() == currency.tag?.toLowerCase();
   }
 
-  Future<void> _fetchErc20Balances() async {
+  Future<void> _fetchErc20Balances(int generation, EVMChainClient client) async {
     // First, clean up any tokens in balance map that don't belong to current chain
     // This handles tokens from previous chains that might still be in the balance map
     final tokensInBalance = balance.keys.whereType<Erc20Token>().toList();
@@ -1321,6 +1365,7 @@ abstract class EVMChainWalletBase
     }
 
     for (var token in tokens) {
+      if (!_sessionCurrent(generation, client)) return;
       if (!_isTokenMatchingChain(token)) {
         printV('NOTEE!!!: Token ${token.title} is not matching the currency ${currency.title}');
         try {
@@ -1334,7 +1379,10 @@ abstract class EVMChainWalletBase
 
       try {
         if (token.enabled) {
-          balance[token] = await _client.fetchERC20Balances(_evmChainPrivateKey.address, token);
+          final value = await client.fetchERC20Balances(_evmChainPrivateKey.address, token)
+              .timeout(const Duration(seconds: 20));
+          if (!_sessionCurrent(generation, client)) return;
+          balance[token] = value;
         } else {
           balance.remove(token);
         }
@@ -1460,7 +1508,7 @@ abstract class EVMChainWalletBase
     balance.remove(token);
     await removeTokenTransactionsInHistory(token);
     if (shouldUpdateBalance) {
-      _updateBalance();
+      await _updateBalance();
     }
   }
 
@@ -1570,8 +1618,10 @@ abstract class EVMChainWalletBase
     }
 
     _transactionsUpdateTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      _updateTransactions();
-      _updateBalance();
+      unawaited(_updateTransactions());
+      unawaited(_updateBalance().catchError((Object _) {
+        printV('Periodic EVM refresh failed; the next scheduled refresh may retry.');
+      }));
     });
   }
 

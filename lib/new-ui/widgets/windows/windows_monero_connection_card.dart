@@ -4,6 +4,8 @@ import 'package:cake_wallet/routes.dart';
 import 'package:cake_wallet/src/widgets/cake_image_widget.dart';
 import 'package:cake_wallet/view_model/dashboard/dashboard_view_model.dart';
 import 'package:cw_core/sync_status.dart';
+import 'package:cw_core/node.dart';
+import 'package:cake_wallet/utils/node_display_address.dart';
 import 'package:cw_core/wallet_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -22,12 +24,19 @@ class WindowsMoneroConnectionCard extends StatelessWidget {
       final theme = Theme.of(context);
       final colors = theme.colorScheme;
       final status = dashboardViewModel.status;
-      final node = dashboardViewModel.settingsStore.nodes[WalletType.monero];
-      final uri = node?.uri;
-      final host = uri?.host ?? '';
-      final address = host.isEmpty
-          ? S.of(context).sync_not_connected
-          : '${host.contains(':') ? '[$host]' : host}:${uri!.port}';
+      final wallet = dashboardViewModel.wallet;
+      final isMonero = wallet.type == WalletType.monero;
+      Node? node;
+      try {
+        node = dashboardViewModel.settingsStore.getCurrentNode(wallet.type, chainId: wallet.chainId);
+      } catch (_) {
+        // A removed or invalid configured node must not break the dashboard.
+      }
+      String? endpoint;
+      try { endpoint = displayNodeAddress(node?.uri); } catch (_) {}
+      final address = endpoint ?? S.of(context).sync_not_connected;
+      final networkName = isMonero ? 'Monero · XMR'
+          : '${dashboardViewModel.currentChain?.name ?? 'EVM'} · ${wallet.currency.title}';
       final title = syncStatusTitle(status, dashboardViewModel.settingsStore.syncStatusDisplayMode);
       final isFailure =
           status is FailedSyncStatus ||
@@ -40,9 +49,10 @@ class WindowsMoneroConnectionCard extends StatelessWidget {
       final information = Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ExcludeSemantics(
+          ExcludeSemantics(
             child: CakeImageWidget(
-              imageUrl: 'assets/new-ui/crypto_full_icons/monero.svg',
+              imageUrl: isMonero ? 'assets/new-ui/crypto_full_icons/monero.svg'
+                  : 'assets/new-ui/crypto_full_icons/ethereum.svg',
               width: 40,
               height: 40,
             ),
@@ -53,7 +63,7 @@ class WindowsMoneroConnectionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Monero · XMR',
+                  networkName,
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),

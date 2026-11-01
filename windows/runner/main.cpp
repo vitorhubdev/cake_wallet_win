@@ -52,14 +52,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::filesystem::path profile;
   if (!ProfileDirectory(&profile)) {
     ::MessageBoxW(nullptr, L"Unable to locate the Windows wallet data directory.",
-                  L"Cake Wallet Windows", MB_OK | MB_ICONERROR);
+                  L"Cake Wallet PC", MB_OK | MB_ICONERROR);
     return EXIT_FAILURE;
   }
   ProfileLock profile_lock;
   const DWORD lock_status = profile_lock.Acquire(profile);
   if (lock_status == ERROR_SHARING_VIOLATION || lock_status == ERROR_LOCK_VIOLATION) {
     // Do not initialize Flutter, SQLite or native wallets a second time.
-    const HWND existing = ::FindWindowW(nullptr, L"Cake Wallet Windows");
+    const HWND existing = ::FindWindowW(nullptr, L"Cake Wallet PC");
     if (existing != nullptr) {
       ::ShowWindow(existing, SW_RESTORE);
       ::SetForegroundWindow(existing);
@@ -69,7 +69,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (lock_status != ERROR_SUCCESS) {
     const std::wstring message = L"Unable to lock the wallet data directory. Check file permissions and available disk space. Windows error: " +
                                  std::to_wstring(lock_status);
-    ::MessageBoxW(nullptr, message.c_str(), L"Cake Wallet Windows", MB_OK | MB_ICONERROR);
+    ::MessageBoxW(nullptr, message.c_str(), L"Cake Wallet PC", MB_OK | MB_ICONERROR);
     return EXIT_FAILURE;
   }
 
@@ -83,7 +83,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size window_size(1280, 720);
-  if (!window.Create(L"Cake Wallet Windows", origin, window_size)) return EXIT_FAILURE;
+  if (!window.Create(L"Cake Wallet PC", origin, window_size)) return EXIT_FAILURE;
   window.SetQuitOnClose(true);
 
   MSG msg;

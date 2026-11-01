@@ -52,7 +52,7 @@ class WindowsWelcomePanel extends StatelessWidget {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
-                                      'Cake Wallet Windows',
+                                      'Cake Wallet PC',
                                       style: theme.textTheme.titleMedium,
                                     ),
                                   ),
@@ -80,7 +80,7 @@ class WindowsWelcomePanel extends StatelessWidget {
                                   const SizedBox(width: 14),
                                   Expanded(
                                     child: Text(
-                                      'Monero · XMR',
+                                      'Monero · Ethereum',
                                       style: theme.textTheme.titleLarge?.copyWith(
                                         fontWeight: FontWeight.w600,
                                       ),

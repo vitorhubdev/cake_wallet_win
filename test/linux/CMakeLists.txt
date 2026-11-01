@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.14)
+project(pc_profile_lock_tests LANGUAGES CXX)
+add_executable(profile_lock_test profile_lock_test.cc)
+target_compile_features(profile_lock_test PRIVATE cxx_std_17)
+target_compile_options(profile_lock_test PRIVATE -Wall -Wextra -Werror)
+enable_testing()
+add_test(NAME profile_lock COMMAND profile_lock_test)

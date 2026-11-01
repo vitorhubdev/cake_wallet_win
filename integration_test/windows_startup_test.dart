@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:cake_wallet/generated/i18n.dart';
+import 'package:cake_wallet/core/secure_storage.dart';
 import 'package:cake_wallet/main.dart' as app;
 import 'package:cake_wallet/src/screens/welcome/create_pin_welcome_page.dart';
 import 'package:cake_wallet/src/widgets/primary_button.dart';
@@ -22,7 +23,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'Windows starts the real application and displays the enabled onboarding button',
+    'Desktop starts the real application and displays the enabled onboarding button',
     (tester) async {
       expect(Platform.environment['GITHUB_ACTIONS'], 'true');
       expect(Platform.environment['RUNNER_ENVIRONMENT'], 'github-hosted');
@@ -31,7 +32,9 @@ void main() {
       expect(profilePath, isNotEmpty);
       final profile = Directory(profilePath!);
       if (profile.existsSync()) {
-        expect(profile.listSync(), isEmpty, reason: 'Never test against an existing wallet.');
+        expect(profile.listSync().where((file) =>
+            p.basename(file.path) != '.cake-wallet.lock'), isEmpty,
+            reason: 'Never test against an existing wallet; only the native process lock may exist.');
       } else {
         profile.createSync(recursive: true);
       }
@@ -39,8 +42,13 @@ void main() {
       // This is the native Windows application directory, independent of
       // CAKE_WALLET_DIR. DPAPI secure storage and preferences use this namespace.
       final supportDirectory = await getApplicationSupportDirectory();
-      expect(p.basename(supportDirectory.path), 'Cake Wallet Windows');
-      expect(p.basename(p.dirname(supportDirectory.path)), 'vitorhubdev');
+      if (Platform.isWindows) {
+        expect(p.basename(supportDirectory.path), 'Cake Wallet Windows');
+        expect(p.basename(p.dirname(supportDirectory.path)), 'vitorhubdev');
+      } else {
+        expect(p.basename(supportDirectory.path), isIn(
+            ['cake_wallet_pc', 'io.github.vitorhubdev.CakeWalletPC']));
+      }
 
       // Check both the Dart environment and the executable resource. Setting
       // Flutter's --build-name alone used to leave the app showing 1.0.0.
@@ -50,12 +58,24 @@ void main() {
       expect(expectedBuildNumber, matches(RegExp(r'^[1-9]\d*$')));
       final displayedPackage = await cake_package.PackageInfo.fromPlatform();
       final executablePackage = await executable_package.PackageInfo.fromPlatform();
-      expect(displayedPackage.appName, 'Cake Wallet Windows');
-      expect(displayedPackage.packageName, 'vitorhubdev.cake_wallet_win');
+      expect(displayedPackage.appName, 'Cake Wallet PC');
+      expect(displayedPackage.packageName, Platform.isWindows
+          ? 'vitorhubdev.cake_wallet_win' : 'io.github.vitorhubdev.CakeWalletPC');
       expect(displayedPackage.version, expectedVersion);
       expect(displayedPackage.buildNumber, expectedBuildNumber);
-      expect(executablePackage.version, expectedVersion);
-      expect(executablePackage.buildNumber, expectedBuildNumber);
+      if (Platform.isWindows) {
+        expect(executablePackage.version, expectedVersion);
+        expect(executablePackage.buildNumber, expectedBuildNumber);
+      }
+      // Public throw-away probe: exercise the real DPAPI/libsecret plugin,
+      // not an in-memory substitute. Never call deleteAll in a smoke test.
+      final probeKey = 'cake_pc_ci_probe_${DateTime.now().microsecondsSinceEpoch}';
+      await secureStorageShared.write(key: probeKey, value: 'public-test-value');
+      try {
+        expect(await secureStorageShared.read(key: probeKey), 'public-test-value');
+      } finally {
+        await secureStorageShared.delete(key: probeKey);
+      }
 
       final frameworkErrorHandler = FlutterError.onError;
       final platformErrorHandler = WidgetsBinding.instance.platformDispatcher.onError;
@@ -112,7 +132,7 @@ void main() {
       // We deliberately stop before agreeing to terms or creating a wallet.
       // Transaction/synchronization behavior is not covered by this test.
     },
-    skip: !Platform.isWindows,
+    skip: !(Platform.isWindows || Platform.isLinux),
     timeout: const Timeout(Duration(minutes: 2)),
   );
 }

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '6.5.0',
+    [string]$Version = '6.5.2',
     [int]$BuildNumber = 1,
     [switch]$SkipPrepare,
     [ValidateSet('All', 'Configure', 'Generate', 'Build')]
@@ -94,7 +94,9 @@ try {
             test/core/windows_wallet_loading_test.dart `
             test/reactions/on_current_node_change_test.dart `
             test/reactions/check_connection_test.dart `
-            test/core/monero_node_probe_test.dart --reporter expanded
+            test/core/pc_node_display_address_test.dart `
+            test/core/monero_node_probe_test.dart `
+            test/evm --reporter expanded
     }
 
     if ($Stage -in @('All', 'Build')) {
@@ -106,7 +108,8 @@ try {
         # of the executable version resource written by --build-name/--build-number.
         # Keep both sources consistent and give the fork its own application ID.
         $buildEnvironment = Get-Content env.json -Raw | ConvertFrom-Json -AsHashtable
-        $buildEnvironment['CW_WIN_APP_NAME'] = 'Cake Wallet Windows'
+        $buildEnvironment['CW_WIN_APP_NAME'] = 'Cake Wallet PC'
+        $buildEnvironment['CAKE_PC_PROFILE'] = 'true'
         $buildEnvironment['CW_WIN_APP_PACKAGE_NAME'] = 'vitorhubdev.cake_wallet_win'
         $buildEnvironment['CW_WIN_APP_VERSION'] = $Version
         $buildEnvironment['CW_WIN_APP_BUILD_NUMBER'] = [string]$BuildNumber
@@ -128,6 +131,8 @@ try {
             repository = 'vitorhubdev/cake_wallet_win'
             commit = (& git rev-parse HEAD)
             version = "$Version+$BuildNumber"
+            upstreamVersion = '6.5.2'
+            upstreamCommit = '4f792ca4a9981961bdc368ad34ba4c8d40c928b1'
             flutter = (& flutter --version --machine | ConvertFrom-Json)
             configuration = 'Windows x64 community build; no Cake production API keys'
         }

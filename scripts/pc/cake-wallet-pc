@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Resolve /usr/bin symlinks as well as paths containing spaces.
+self=$(readlink -f "${BASH_SOURCE[0]}")
+here=$(dirname "$self")
+export LD_LIBRARY_PATH="$here/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$here/cake_wallet_pc" "$@"

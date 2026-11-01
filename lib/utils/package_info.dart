@@ -10,7 +10,8 @@ abstract class _EnvKeys {
 
 class PackageInfo {
   static Future<PackageInfo> fromPlatform() async {
-    if (Platform.isWindows) {
+    if (Platform.isWindows ||
+        (Platform.isLinux && const bool.fromEnvironment('CAKE_PC_PROFILE'))) {
       return _windowsPackageInfo;
     }
 

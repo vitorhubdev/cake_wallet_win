@@ -4,10 +4,10 @@ project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "cake_wallet")
+set(BINARY_NAME "cake_wallet_pc")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.example.cake_wallet")
+set(APPLICATION_ID "io.github.vitorhubdev.CakeWalletPC")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -40,7 +40,7 @@ endif()
 # default. In most cases, you should add new options to specific targets instead
 # of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
-  target_compile_features(${TARGET} PUBLIC cxx_std_14)
+  target_compile_features(${TARGET} PUBLIC cxx_std_17)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
@@ -88,6 +88,7 @@ set_target_properties(${BINARY_NAME}
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+set(CMAKE_DISABLE_FIND_PACKAGE_JNI TRUE)
 include(flutter/generated_plugins.cmake)
 
 
@@ -107,43 +108,11 @@ install(CODE "
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-  set(LIB_TRIPLET "aarch64-linux-gnu")
-else()
-  set(LIB_TRIPLET "x86_64-linux-gnu")
-endif()
-
-execute_process(
-  COMMAND git describe --tags
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c
-  OUTPUT_VARIABLE MONERO_C_TAG
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-set(MONERO_C_RELEASE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/monero_c/release/${MONERO_C_TAG}/${LIB_TRIPLET}"
-)
-
-install(
-  FILES "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/zcash_lib/target/release/libwarp_api_ffi.so"
-  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  RENAME "libwarp_api_ffi.so"
-  COMPONENT Runtime
-)
-
-install(
-  FILES "${MONERO_C_RELEASE_DIR}/libmonero_wallet2_api_c.so"
-  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  RENAME "libmonero_wallet2_api_c.so"
-  COMPONENT Runtime
-)
-
-install(
-  FILES "${MONERO_C_RELEASE_DIR}/libwownero_wallet2_api_c.so"
-  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  RENAME "libwownero_wallet2_api_c.so"
-  COMPONENT Runtime
-)
+# This desktop profile excludes unbuilt Zcash/Wownero backends.
+set(PC_NATIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build/linux-native")
+install(FILES "${PC_NATIVE_DIR}/monero/libmonero_wallet2_api_c.so"
+              "${PC_NATIVE_DIR}/mweb/libmweb.so"
+        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)

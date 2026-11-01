@@ -2,7 +2,7 @@
 ; stable across releases. Only installed application files are uninstalled;
 ; wallet data in AppData is deliberately outside this script's file entries.
 #ifndef MyAppVersion
-  #define MyAppVersion "6.5.0"
+  #define MyAppVersion "6.5.2"
 #endif
 #ifndef MyBuildNumber
   #define MyBuildNumber "1"
@@ -13,7 +13,7 @@
 #ifndef OutputPath
   #define OutputPath "..\..\dist"
 #endif
-#define MyAppName "Cake Wallet Windows"
+#define MyAppName "Cake Wallet PC"
 #define MyAppURL "https://github.com/vitorhubdev/cake_wallet_win"
 #define MyAppExeName "CakeWallet.exe"
 
@@ -37,7 +37,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir={#OutputPath}
-OutputBaseFilename=CakeWallet-Windows-x64-{#MyAppVersion}-{#MyBuildNumber}-Setup
+OutputBaseFilename=CakeWalletPC-Windows-x64-{#MyAppVersion}-{#MyBuildNumber}-Setup
 SetupIconFile=..\..\windows\runner\resources\app_icon.ico
 Compression=lzma2/normal
 SolidCompression=yes

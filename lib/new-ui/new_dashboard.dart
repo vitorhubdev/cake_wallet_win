@@ -51,7 +51,7 @@ class _NewDashboardState extends State<NewDashboard> {
   };
 
   Widget _pageAt(int index) {
-    if (!Platform.isWindows) return _mobilePages[index];
+    if (!(Platform.isWindows || Platform.isLinux)) return _mobilePages[index];
     return _windowsPages[index] ??= _createPage(index);
   }
 
@@ -67,7 +67,7 @@ class _NewDashboardState extends State<NewDashboard> {
     final stack = IndexedStack(
       key: _pageStackKey,
       index: _selectedPage,
-      children: Platform.isWindows
+      children: (Platform.isWindows || Platform.isLinux)
           ? List<Widget>.generate(
               _windowsPages.length,
               (index) => TickerMode(
@@ -78,7 +78,7 @@ class _NewDashboardState extends State<NewDashboard> {
             )
           : _mobilePages,
     );
-    if (!Platform.isWindows) return stack;
+    if (!(Platform.isWindows || Platform.isLinux)) return stack;
     // Existing balance cards use MediaQuery for their centering geometry.
     // Give them the page viewport, excluding the desktop navigation column.
     return LayoutBuilder(
@@ -92,7 +92,7 @@ class _NewDashboardState extends State<NewDashboard> {
   @override
   void initState() {
     super.initState();
-    _mobilePages = Platform.isWindows ? [] : List<Widget>.generate(5, _createPage);
+    _mobilePages = (Platform.isWindows || Platform.isLinux) ? [] : List<Widget>.generate(5, _createPage);
     _walletReaction = reaction((_) => widget.dashboardViewModel.appStore.wallet, (_) {
       if (!mounted) return;
       setState(() {
@@ -127,7 +127,7 @@ class _NewDashboardState extends State<NewDashboard> {
           key: ValueKey("new_dashboard_page_key"),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              if (Platform.isWindows && constraints.maxWidth >= 900) {
+              if ((Platform.isWindows || Platform.isLinux) && constraints.maxWidth >= 900) {
                 return Row(
                   children: [
                     WindowsDashboardNavigation(

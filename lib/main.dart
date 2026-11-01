@@ -172,7 +172,7 @@ Future<void> runAppWithZone({Key? topLevelKey}) async {
       ProxyWrapper.logger = MemoryProxyLogger();
     }
 
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows && zcash != null) {
       var zcashPassword = await secureStorageShared.read(key: "com.cakewallet.cw_zcash/zec.db");
       if (zcashPassword == null || zcashPassword.isEmpty) {
         zcashPassword = generateKey().substring(0, 32);
