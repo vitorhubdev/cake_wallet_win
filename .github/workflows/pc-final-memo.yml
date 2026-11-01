@@ -1,0 +1,100 @@
+name: Finalize PC transaction calldata boundaries
+on:
+  push:
+    branches: [pc-transaction-boundaries]
+    paths: [.github/workflows/pc-final-memo.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dad96d2e9e4aab2764d34d76ec53ea54d5c10080
+      - name: Keep ERC20 transfer calldata distinct from native memo bytes
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          p=pathlib.Path('cw_evm/lib/evm_chain_wallet.dart')
+          s=p.read_text()
+          old='''    final transactionCurrency = resolveEvmTransactionCurrency(
+                  balance.keys, _credentials.currency, signingChain);
+          '''
+          old=old.replace('                  balance','        balance').replace('\n          ','\n')
+          assert s.count(old)==1, 'Unexpected transaction currency source'
+          new=old+'''    if (transactionCurrency is Erc20Token && memoBytes != null && memoBytes.isNotEmpty) {
+                throw EVMChainTransactionCreationException.fromMessage(
+                    'ERC20 transfers do not support arbitrary memo data.');
+              }
+          '''
+          new=new.replace('                throw','      throw').replace('                    \'','          \'').replace('              }','    }').replace('\n          ','\n')
+          s=s.replace(old,new)
+          assert s.count('        data: memoBytes,')==2
+          s=s.replace('        data: memoBytes,','        data: contractAddress == null ? memoBytes : null,')
+          p.write_text(s)
+          p=pathlib.Path('test/evm/pc_transaction_boundaries_test.dart')
+          s=p.read_text()
+          marker="  test('negative native amount is rejected before fee RPC or signing', () async {"
+          assert s.count(marker)==1
+          extra='''  test('ERC20 memo cannot replace ABI transfer data during estimation', () async {
+            final wallet = _FeeControlledWallet(info);
+            addTearDown(wallet.close);
+            final asset = token(secondContract);
+            wallet.balance[asset] = EVMChainERC20Balance(Money.fromInt(1000000, asset));
+            final credentials = EVMChainTransactionCredentials([OutputInfo(
+              address: '0x0000000000000000000000000000000000000002',
+              sendAll: false, isParsedAddress: false,
+              cryptoAmount: Money.fromInt(1, asset), memo: 'unsupported memo',
+            )], priority: null, currency: asset);
+            await expectLater(wallet.createTransaction(credentials),
+                throwsA(isA<EVMChainTransactionCreationException>()));
+            expect(wallet.feeStarted.isCompleted, isFalse);
+          });
+          test('empty ERC20 memo preserves normal encoded transfer estimation', () async {
+            final wallet = _FeeControlledWallet(info);
+            addTearDown(wallet.close);
+            final asset = token(secondContract);
+            wallet.balance[asset] = EVMChainERC20Balance(Money.fromInt(1000000, asset));
+            final credentials = EVMChainTransactionCredentials([OutputInfo(
+              address: '0x0000000000000000000000000000000000000002',
+              sendAll: false, isParsedAddress: false,
+              cryptoAmount: Money.fromInt(1, asset), memo: '',
+            )], priority: null, currency: asset);
+            final stopped = expectLater(wallet.createTransaction(credentials), throwsStateError);
+            await wallet.feeStarted.future;
+            expect(wallet.estimatedData, isNull);
+            wallet.feeResult.completeError(StateError('stop fixture before signing'));
+            await stopped;
+          });
+          '''
+          p.write_text(s.replace(marker,extra+marker))
+          p=pathlib.Path('docs/builds/CAKE_WALLET_PC.md')
+          p.write_text(p.read_text()+'''\n## Proteções adicionais de transações EVM\n\nO QR de recebimento acompanha a rede selecionada. Envios com vários destinatários são recusados, em vez de somar os valores para um único endereço. Tokens são resolvidos por contrato e rede, não apenas pelo símbolo; diferenças de casas decimais são rejeitadas. A preparação da assinatura é invalidada quando a carteira muda de rede, conexão ou é fechada. Memos de transferências nativas usam UTF-8 e entram na estimativa de gas; memos arbitrários em transferências ERC20 são recusados para preservar o calldata ABI. Esses cenários são testes obrigatórios do CI, sem fundos reais.\n''')
+          PY
+          git diff --check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Parse changes and preserve deterministic release checks
+        run: |
+          set -euo pipefail
+          dart format cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/utils/transaction_currency.dart test/evm/pc_transaction_boundaries_test.dart
+          dart tool/windows_stability_checks.dart
+          git diff --exit-code -- .github pubspec_overrides.yaml tool/configure_windows_secrets.dart
+      - name: Commit source without changing release gates
+        run: |
+          set -euo pipefail
+          git switch -c pc-transaction-final-result
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/utils/transaction_currency.dart test/evm/pc_transaction_boundaries_test.dart docs/builds/CAKE_WALLET_PC.md
+          git diff --cached --check
+          git commit -m 'Preserve ERC20 ABI payloads and reject unsupported memo data before signing' -m 'Complete transactional session, contract identity and UTF-8 regression coverage. Windows and Linux full tests remain mandatory before release.'
+          git push origin HEAD:refs/heads/pc-transaction-final-result
