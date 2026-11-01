@@ -1,0 +1,80 @@
+name: Observe PC public RPC compatibility
+on:
+  push:
+    branches: [pc-transaction-boundaries]
+    paths: [.github/workflows/pc-network-probes.yml]
+permissions:
+  contents: read
+jobs:
+  rpc:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4adc55187f55a4c4d0a31b4e38056c2bee760264
+          persist-credentials: false
+      - name: Read public chain identity and height only, never addresses or keys
+        shell: bash
+        run: |
+          python - <<'PY'
+          import concurrent.futures,datetime,json,pathlib,re,time,urllib.request,urllib.error
+          registry=pathlib.Path('cw_evm/lib/evm_chain_registry.dart').read_text()
+          targets=[]
+          pattern=r'chainId:\s*(\d+),.*?defaultRpcEndpoints:\s*\[(.*?)\]'
+          for chain,block in re.findall(pattern,registry,re.S):
+              urls=re.findall(r"['\"]([^'\"]+)['\"]",block)
+              # Probe public no-key alternatives; Nownodes needs provider keys.
+              urls=[u for u in urls if 'nownodes' not in u][:2]
+              for host in urls:
+                  targets.append(('evm',int(chain),'https://'+host,'eth_chainId'))
+          entries=pathlib.Path('assets/node_list.yml').read_text().split('\n-')
+          for item in entries:
+              host=re.search(r'uri:\s*([^\s]+)',item)
+              if not host or '.onion' in host[1]: continue
+              secure=bool(re.search(r'useSSL:\s*true',item))
+              targets.append(('xmr',0,('https://' if secure else 'http://')+host[1]+'/json_rpc','get_info'))
+          def probe(target):
+              kind,chain,url,method=target
+              start=time.monotonic()
+              report={'kind':kind,'expectedChain':chain,'endpoint':url,'ok':False}
+              payload=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':[] if kind=='evm' else {}}).encode()
+              try:
+                  request=urllib.request.Request(url,data=payload,headers={'Content-Type':'application/json','User-Agent':'CakeWalletPC-read-only-compatibility-check'})
+                  with urllib.request.urlopen(request,timeout=10) as response:
+                      raw=response.read(1048577)
+                      if len(raw)>1048576: raise ValueError('oversized response')
+                      data=json.loads(raw)
+                  result=data.get('result')
+                  if kind=='evm':
+                      received=int(result,16) if isinstance(result,str) else None
+                      report.update(receivedChain=received,ok=received==chain)
+                  else:
+                      height=result.get('height',0) if isinstance(result,dict) else 0
+                      nettype=result.get('nettype') if isinstance(result,dict) else None
+                      report.update(height=height,nettype=nettype,ok=isinstance(height,int) and height>0 and nettype=='mainnet')
+                  if data.get('error'): report['rpcErrorCode']=data['error'].get('code')
+              except urllib.error.HTTPError as error:
+                  report['httpStatus']=error.code
+              except Exception as error:
+                  # Record error type only; never copy remote response text.
+                  report['errorType']=type(error).__name__
+              report['elapsedMs']=round((time.monotonic()-start)*1000)
+              return report
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              results=list(pool.map(probe,targets))
+          report={'checkedAtUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'source':'4adc55187f55a4c4d0a31b4e38056c2bee760264','scope':'Read-only public RPC identity and node height; not wallet synchronization or payment testing','networkOperations':'eth_chainId/get_info only; no wallet addresses, balances, keys or transactions','results':results}
+          pathlib.Path('rpc-observations.json').write_text(json.dumps(report,indent=2))
+          for result in results: print(json.dumps(result))
+          print(json.dumps({'passingEvm':sum(r['ok'] for r in results if r['kind']=='evm'),'passingXmr':sum(r['ok'] for r in results if r['kind']=='xmr')}))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-rpc-observations-${{ matrix.os }}
+          path: rpc-observations.json
+          if-no-files-found: error
+          retention-days: 7
