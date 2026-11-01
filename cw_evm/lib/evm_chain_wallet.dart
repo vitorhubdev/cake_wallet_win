@@ -208,6 +208,7 @@ abstract class EVMChainWalletBase
     balance.clear();
 
     selectedChainId = chainId;
+    (walletAddresses as EVMChainWalletAddresses).setChainId(chainId);
     _client = EVMChainClientFactory.createClient(selectedChainId);
 
     // Automatically connect to node for the selected chain
@@ -829,6 +830,7 @@ abstract class EVMChainWalletBase
       if (generation != _connectionGeneration || !identical(client, _client)) return;
 
       if (!correctChain) {
+        client.stop(); // A wrong-chain RPC must not remain available for sending.
         throw ConnectionException("${walletInfo.type.name.toUpperCase()} Node connection failed");
       }
 
@@ -879,6 +881,10 @@ abstract class EVMChainWalletBase
   Future<PendingTransaction> createTransaction(Object credentials) async {
     final _credentials = credentials as EVMChainTransactionCredentials;
     final outputs = _credentials.outputs;
+    if (outputs.length != 1) {
+      throw EVMChainTransactionCreationException.fromMessage(
+          'An EVM transfer requires exactly one recipient. Batch transfers are not supported.');
+    }
     final hasMultiDestination = outputs.length > 1;
 
     final String? opReturnMemo = outputs.first.memo;

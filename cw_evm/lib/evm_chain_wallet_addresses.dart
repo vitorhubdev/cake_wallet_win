@@ -18,7 +18,14 @@ abstract class EVMChainWalletAddressesBase extends WalletAddresses with Store {
   @override
   String get primaryAddress => address;
 
-  final int _selectedChainId;
+  @observable
+  int _selectedChainId;
+
+  @action
+  void setChainId(int chainId) {
+    if (chainId <= 0) throw ArgumentError.value(chainId, 'chainId');
+    _selectedChainId = chainId;
+  }
 
   @override
   Future<void> init() async {
