@@ -34,6 +34,7 @@ import 'package:cw_evm/evm_chain_transaction_model.dart';
 import 'package:cw_evm/evm_chain_transaction_priority.dart';
 import 'package:cw_evm/utils/evm_chain_utils.dart';
 import 'package:cw_evm/utils/network_chain_utils.dart';
+import 'package:cw_evm/utils/transaction_currency.dart';
 import 'package:cw_evm/evm_chain_wallet_addresses.dart';
 import 'package:cw_evm/hardware/evm_chain_bitbox_credentials.dart';
 import 'package:cw_evm/hardware/evm_chain_ledger_credentials.dart';
@@ -885,23 +886,20 @@ abstract class EVMChainWalletBase
       throw EVMChainTransactionCreationException.fromMessage(
           'An EVM transfer requires exactly one recipient. Batch transfers are not supported.');
     }
+    final generation = _connectionGeneration;
+    final signingClient = _client;
+    final signingChain = selectedChainId;
+    _requireTransactionSession(generation, signingClient);
+    if (!outputs.single.sendAll && outputs.single.cryptoAmount.isNegative) {
+      throw EVMChainTransactionCreationException.fromMessage('A transfer amount cannot be negative.');
+    }
     final hasMultiDestination = outputs.length > 1;
 
-    final String? opReturnMemo = outputs.first.memo;
-
-    String? hexOpReturnMemo;
-    if (opReturnMemo != null) {
-      hexOpReturnMemo =
-          '0x${opReturnMemo.codeUnits.map((char) => char.toRadixString(16).padLeft(2, '0')).join()}';
-    }
-
-    final transactionCurrency = balance.keys.firstWhere(
-        (currency) =>
-            currency.title == _credentials.currency.title &&
-            (currency.tag == _credentials.currency.tag ||
-                currency.tag == _credentials.currency.title),
-        orElse: () => throw BadCurrencyException(
-            'Currency ${_credentials.currency.title} ${_credentials.currency.tag} is not accessible in the wallet, try to enable it first.', _credentials.currency));
+    final memo = outputs.single.memo;
+    final memoBytes = memo == null ? null : Uint8List.fromList(utf8.encode(memo));
+    final hexOpReturnMemo = memoBytes == null ? null : '0x${HEX.encode(memoBytes)}';
+    final transactionCurrency = resolveEvmTransactionCurrency(
+        balance.keys, _credentials.currency, signingChain);
 
     final currencyBalance = balance[transactionCurrency]!;
     final toAddress = _credentials.outputs.first.isParsedAddress
@@ -932,7 +930,9 @@ abstract class EVMChainWalletBase
         receivingAddressHex: toAddress,
         priority: _credentials.priority,
         contractAddress: contractAddress,
+        data: memoBytes,
       );
+      _requireTransactionSession(generation, signingClient);
 
       estimatedFeesForTransaction =
           estimatedFeesForTransaction.copyWith(amount: BigInt.from(gasFeesModel.estimatedGasFee));
@@ -957,7 +957,9 @@ abstract class EVMChainWalletBase
         receivingAddressHex: toAddress,
         priority: _credentials.priority,
         contractAddress: contractAddress,
+        data: memoBytes,
       );
+      _requireTransactionSession(generation, signingClient);
 
       estimatedFeesForTransaction =
           estimatedFeesForTransaction.copyWith(amount: BigInt.from(gasFeesModel.estimatedGasFee));
@@ -965,7 +967,7 @@ abstract class EVMChainWalletBase
       maxFeePerGasForTransaction = gasFeesModel.maxFeePerGas;
 
       if (output.sendAll && transactionCurrency is! Erc20Token) {
-        if (selectedChainId == 8453) {
+        if (signingChain == 8453) {
           // Applying a small buffer to account for gas price fluctuations
           // 10% or minimum 10,000 wei, whichever is higher
           final refinedGasFee = estimatedFeesForTransaction.amount;
@@ -999,10 +1001,11 @@ abstract class EVMChainWalletBase
     if (transactionCurrency is Erc20Token &&
         walletInfo.hardwareWalletType == HardwareWalletType.ledger) {
       await (_evmChainPrivateKey as EvmLedgerCredentials)
-          .provideERC20Info(transactionCurrency.contractAddress, selectedChainId);
+          .provideERC20Info(transactionCurrency.contractAddress, signingChain);
     }
 
-    final pendingEVMChainTransaction = await _client.signTransaction(
+    _requireTransactionSession(generation, signingClient);
+    final pendingEVMChainTransaction = await signingClient.signTransaction(
       estimatedGasUnits: estimatedGasUnitsForTransaction,
       privateKey: _evmChainPrivateKey,
       toAddress: toAddress,
@@ -1010,7 +1013,7 @@ abstract class EVMChainWalletBase
       gasFee: estimatedFeesForTransaction,
       priority: _credentials.priority,
       currency: transactionCurrency,
-      feeCurrency: EVMChainUtils.getFeeCurrency(selectedChainId),
+      feeCurrency: EVMChainUtils.getFeeCurrency(signingChain),
       maxFeePerGas: maxFeePerGasForTransaction,
       contractAddress:
           transactionCurrency is Erc20Token ? transactionCurrency.contractAddress : null,
@@ -1019,6 +1022,7 @@ abstract class EVMChainWalletBase
       useBlinkProtection: _credentials.useBlinkProtection,
     );
 
+    _requireTransactionSession(generation, signingClient);
     return pendingEVMChainTransaction;
   }
 
@@ -1031,6 +1035,9 @@ abstract class EVMChainWalletBase
     BigInt? sourceTokenAmount, {
     bool useBlinkProtection = true,
   }) async {
+    final generation = _connectionGeneration;
+    final signingClient = _client;
+    _requireTransactionSession(generation, signingClient);
     // Define Native Currency
     final nativeCurrency = switch (selectedChainId) {
       137 => CryptoCurrency.maticpoly,
@@ -1057,6 +1064,7 @@ abstract class EVMChainWalletBase
       gas = GasParamsHandler.zero();
     }
 
+    _requireTransactionSession(generation, signingClient);
     final nativeBal = balance[nativeCurrency]?.available ?? Money.zero(nativeCurrency);
     var requiredNative = Money.fromInt(gas.estimatedGasFee, nativeCurrency);
 
@@ -1095,7 +1103,7 @@ abstract class EVMChainWalletBase
     final gasUnits = gas.estimatedGasUnits == 0 ? 300000 : gas.estimatedGasUnits;
 
     try {
-      return _client.signTransaction(
+      final pending = await signingClient.signTransaction(
         privateKey: _evmChainPrivateKey,
         toAddress: to,
         amount: valueWei,
@@ -1110,6 +1118,8 @@ abstract class EVMChainWalletBase
         gasPrice: gas.gasPrice,
         useBlinkProtection: useBlinkProtection,
       );
+      _requireTransactionSession(generation, signingClient);
+      return pending;
     } catch (_) {
       throw TransactionGenerationException('Failed to create the transaction.');
     }
@@ -1118,12 +1128,17 @@ abstract class EVMChainWalletBase
   Future<PendingTransaction> createApprovalTransaction(
       Money amount, String spender, EVMChainTransactionPriority? priority,
       {bool useBlinkProtection = true}) async {
-    final transactionCurrency =
-        balance.keys.firstWhere((element) => element.symbol == amount.currency.symbol);
-    assert(transactionCurrency is Erc20Token);
+    final generation = _connectionGeneration;
+    final signingClient = _client;
+    _requireTransactionSession(generation, signingClient);
+    if (amount.currency is! Erc20Token || amount.isNegative) {
+      throw EVMChainTransactionCreationException.fromMessage('An approval requires an ERC20 token and a non-negative amount.');
+    }
+    final transactionCurrency = resolveEvmTransactionCurrency(
+        balance.keys, amount.currency as Erc20Token, selectedChainId) as Erc20Token;
 
     final data = _client.getEncodedDataForApprovalTransaction(
-      contractAddress: EthereumAddress.fromHex((transactionCurrency as Erc20Token).contractAddress),
+      contractAddress: EthereumAddress.fromHex(transactionCurrency.contractAddress),
       value: EtherAmount.fromBigInt(EtherUnit.wei, amount.amount),
       toAddress: EthereumAddress.fromHex(spender),
     );
@@ -1138,11 +1153,12 @@ abstract class EVMChainWalletBase
       data: data,
     );
 
+    _requireTransactionSession(generation, signingClient);
     final int safeGasUnits = gasFeesModel.estimatedGasUnits == 0
         ? 65000
         : (gasFeesModel.estimatedGasUnits < 65000 ? 65000 : gasFeesModel.estimatedGasUnits);
 
-    return _client.signApprovalTransaction(
+    final pending = await signingClient.signApprovalTransaction(
       privateKey: _evmChainPrivateKey,
       spender: spender,
       amount: amount,
@@ -1154,6 +1170,8 @@ abstract class EVMChainWalletBase
       gasPrice: gasFeesModel.gasPrice,
       useBlinkProtection: useBlinkProtection,
     );
+    _requireTransactionSession(generation, signingClient);
+    return pending;
   }
 
   Future<void> _updateTransactions() async {
@@ -1327,6 +1345,13 @@ abstract class EVMChainWalletBase
     final generation = _connectionGeneration;
     return _balanceUpdates[generation] ??= _refreshBalance(generation, _client)
         .whenComplete(() => _balanceUpdates.remove(generation));
+  }
+
+  void _requireTransactionSession(int generation, EVMChainClient client) {
+    if (!_sessionCurrent(generation, client)) {
+      throw EVMChainTransactionCreationException.fromMessage(
+          'The wallet network or connection changed while preparing the transaction. Review it again.');
+    }
   }
 
   bool _sessionCurrent(int generation, EVMChainClient client) =>
