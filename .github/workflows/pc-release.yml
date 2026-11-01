@@ -1,0 +1,363 @@
+name: Cake Wallet PC Windows and Linux
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', '.audit/**', '.github/workflows/pc-source-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: cake-wallet-pc-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.version.outputs.build }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify upstream ancestry and allocate a monotonic desktop build
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 4f792ca4a9981961bdc368ad34ba4c8d40c928b1 HEAD
+          build=$((1000 + RUN_NUMBER))
+          test "$build" -lt 65535
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Cake Wallet PC 6.5.2+$build; upstream tag v6.5.2 is an ancestor." >> "$GITHUB_STEP_SUMMARY"
+  linux-native:
+    uses: ./.github/workflows/pc-native-linux.yml
+  windows-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify the provenance of the matching native Monero build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41144113544 > /tmp/native-source.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('/tmp/native-source.json'))
+          assert r['head_sha']=='1a861d42c97298778427684018dda4346f29ffc9'
+          assert r['head_repository']['full_name']=='vitorhubdev/cake_wallet_win'
+          assert r['event']=='push'
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: windows-monero-native
+          path: build/windows-native/monero
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 41144113544
+          github-token: ${{ github.token }}
+      - name: Verify the pinned Windows Monero library and runtimes
+        run: python3 -c 'from scripts.windows.prepare_dependencies import verify_monero; verify_monero()'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.25.1'
+          cache: true
+          cache-dependency-path: cw_mweb/go/go.sum
+      - name: Build current MWEB and its native Windows runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::Retries=2 update
+          sudo apt-get -o Acquire::Retries=2 install --no-install-recommends -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
+          bash scripts/windows/build_mweb.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-windows-native
+          path: build/windows-native/
+          if-no-files-found: error
+          retention-days: 14
+  desktop:
+    name: Build and verify ${{ matrix.platform }} x64
+    needs: [identity, windows-native]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            runner: windows-2022
+          - platform: Linux
+            runner: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    env:
+      PC_VERSION: '6.5.2'
+      PC_BUILD: ${{ needs.identity.outputs.build }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/cargo-target
+    steps:
+      - name: Configure Windows checkout and short dependency paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          git config --global core.symlinks true
+          'PUB_CACHE=C:\pub-cache' >> $env:GITHUB_ENV
+          'CARGO_TARGET_DIR=C:\cargo-target' >> $env:GITHUB_ENV
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare Linux compiler and real desktop/keyring runtime
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 install --no-install-recommends -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libjsoncpp-dev libsqlite3-dev libblkid-dev liblzma-dev libssl-dev libudev-dev libusb-1.0-0-dev libayatana-appindicator3-dev libnotify-dev libstdc++-12-dev xvfb xauth dbus-x11 gnome-keyring xdotool desktop-file-utils
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: runner.os == 'Linux'
+        with:
+          go-version: '1.25.1'
+          cache: true
+          cache-dependency-path: cw_mweb/go/go.sum
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: runner.os == 'Windows'
+        id: win-deps
+        with:
+          path: |
+            C:\pub-cache\git\cache
+            C:\pub-cache\hosted
+            C:\pub-cache\hosted-hashes
+            scripts/.cache/windows
+          key: windows-deps-v2-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: windows-deps-v2-
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: runner.os == 'Linux'
+        id: linux-deps
+        with:
+          path: |
+            ~/.pub-cache/git/cache
+            ~/.pub-cache/hosted
+            ~/.pub-cache/hosted-hashes
+            scripts/.cache/windows
+          key: pc-linux-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: pc-linux-deps-v1-
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: pc-rust-${{ runner.os }}-v1-${{ hashFiles('pubspec_overrides.yaml') }}
+          restore-keys: pc-rust-${{ runner.os }}-v1-
+      - name: Deterministic concurrency and synchronization regressions
+        shell: bash
+        run: dart tool/windows_stability_checks.dart
+      - name: Native Windows profile exclusion and Unicode path regression
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake -S test/windows -B build/windows-profile-tests -A x64
+          cmake --build build/windows-profile-tests --config Release
+          ctest --test-dir build/windows-profile-tests -C Release --output-on-failure
+          Push-Location test/windows_native_path
+          try { dart pub get; dart run native_wallet_path_test.dart } finally { Pop-Location }
+      - name: Native Linux profile exclusion and symlink protection
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S test/linux -B build/linux-profile-tests -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/linux-profile-tests
+          ctest --test-dir build/linux-profile-tests --output-on-failure
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: runner.os == 'Windows'
+        with:
+          name: pc-windows-native
+          path: build/windows-native
+      - name: Resolve and validate pinned Windows dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          python scripts/windows/prepare_dependencies.py --sources-only
+          ./scripts/windows/build.ps1 -Stage Configure -SkipPrepare -Version $env:PC_VERSION -BuildNumber $env:PC_BUILD
+      - name: Resolve and validate pinned Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/pc/build_linux.sh configure "$PC_VERSION" "$PC_BUILD"
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: runner.os == 'Windows' && steps.win-deps.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: |
+            C:\pub-cache\git\cache
+            C:\pub-cache\hosted
+            C:\pub-cache\hosted-hashes
+            scripts/.cache/windows
+          key: ${{ steps.win-deps.outputs.cache-primary-key }}
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: runner.os == 'Linux' && steps.linux-deps.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: |
+            ~/.pub-cache/git/cache
+            ~/.pub-cache/hosted
+            ~/.pub-cache/hosted-hashes
+            scripts/.cache/windows
+          key: ${{ steps.linux-deps.outputs.cache-primary-key }}
+      - name: Generate Windows application and run EVM/XMR regressions
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/windows/build.ps1 -Stage Generate -Version $env:PC_VERSION -BuildNumber $env:PC_BUILD
+      - name: Generate Linux application and run EVM/XMR regressions
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/pc/build_linux.sh generate "$PC_VERSION" "$PC_BUILD"
+      - name: Wait for the exact Linux native artifact in this run
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/pc/wait_native.py --artifact pc-linux-monero-native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: runner.os == 'Linux'
+        with:
+          name: pc-linux-monero-native
+          path: build/linux-native/monero
+      - name: Compile Windows release and package all native runtimes
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/windows/build.ps1 -Stage Build -Version $env:PC_VERSION -BuildNumber $env:PC_BUILD
+      - name: Compile Linux release and package all native runtimes
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/pc/build_linux.sh build "$PC_VERSION" "$PC_BUILD"
+      - name: Verify real Windows DLLs, offline XMR storage and visible process
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          ./scripts/windows/smoke_test.ps1
+          $bundle = (Resolve-Path build/windows/x64/runner/Release).Path
+          dart run tool/windows_monero_smoke.dart $bundle
+          $env:CAKE_MONERO_TEST_BUNDLE = $bundle
+          $env:PATH = "$bundle;$env:PATH"
+          flutter test test/monero/windows_storage_test.dart --reporter expanded --timeout 2m
+          Remove-Item Env:CAKE_MONERO_TEST_BUNDLE
+      - name: Verify real Linux offline XMR creation, identity and concurrent storage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CAKE_MONERO_TEST_BUNDLE="$PWD/build/linux/x64/release/bundle/lib"
+          export LD_LIBRARY_PATH="$CAKE_MONERO_TEST_BUNDLE:${LD_LIBRARY_PATH:-}"
+          dart run tool/windows_monero_smoke.dart "$CAKE_MONERO_TEST_BUNDLE"
+          flutter test test/monero/windows_storage_test.dart --reporter expanded --timeout 2m
+      - name: Verify real Windows onboarding and secure storage
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $env:CAKE_WALLET_DIR = Join-Path $env:RUNNER_TEMP ('cw-pc-startup-' + [Guid]::NewGuid())
+          flutter test integration_test/windows_startup_test.dart -d windows --timeout 4m --reporter expanded --dart-define-from-file=build/windows-build-env.json
+          Remove-Item Env:CAKE_WALLET_DIR
+      - name: Verify real Linux onboarding and isolated Secret Service
+        if: runner.os == 'Linux'
+        shell: bash
+        run: dbus-run-session -- bash scripts/pc/test_linux_session.sh
+      - name: Package Windows portable ZIP and installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item docs/builds/CAKE_WALLET_PC.md build/windows/x64/runner/Release/README-PC.md
+          $name = "CakeWalletPC-Windows-x64-$env:PC_VERSION-$env:PC_BUILD"
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "dist/$name.zip"
+          ./scripts/windows/package_installer.ps1 -Version $env:PC_VERSION -BuildNumber $env:PC_BUILD
+          $previous = Join-Path $env:RUNNER_TEMP 'CakeWallet-previous-Setup.exe'
+          Invoke-WebRequest -Uri 'https://github.com/vitorhubdev/cake_wallet_win/releases/download/windows-6.5.0-12-1/CakeWallet-Windows-x64-6.5.0-12-Setup.exe' -OutFile $previous -TimeoutSec 120
+          if ((Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant() -ne '5b81ee0b09b622a3595a571ef7ac84144d8b14a819e38fbecf33601f45461cc0') { throw 'Previous installer digest mismatch' }
+          ./scripts/windows/install_smoke_test.ps1 -InstallerPath "dist/$name-Setup.exe" -PreviousInstallerPath $previous
+          Get-ChildItem "dist/$name*" | Sort-Object Name | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content dist/SHA256SUMS-windows.txt -Encoding ascii
+      - name: Package and verify Linux portable bundle and DEB installation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          xvfb-run -a python3 scripts/pc/smoke_linux.py build/linux/x64/release/bundle/cake-wallet-pc
+          python3 scripts/pc/package_linux.py --version "$PC_VERSION" --build "$PC_BUILD"
+          dbus-run-session -- bash scripts/pc/install_linux_test.sh "dist/CakeWalletPC-Linux-x64-$PC_VERSION-$PC_BUILD.deb"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-${{ matrix.platform }}-distribution
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pc-${{ matrix.platform }}-diagnostics
+          path: |
+            build/windows-smoke/
+            build/windows-install-smoke/
+            build/integration_test_screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+  publish:
+    name: Publish only after both desktop installers pass
+    needs: [identity, desktop, linux-native]
+    if: github.repository == 'vitorhubdev/cake_wallet_win' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: pc-*-distribution
+          path: dist
+          merge-multiple: true
+      - name: Verify complete Windows and Linux distribution and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PC_BUILD: ${{ needs.identity.outputs.build }}
+          BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd dist
+          cat SHA256SUMS-windows.txt SHA256SUMS-linux.txt | sort > SHA256SUMS.txt
+          python3 - <<'PY'
+          import os,pathlib
+          b=os.environ['PC_BUILD']
+          expected={f'CakeWalletPC-Windows-x64-6.5.2-{b}-Setup.exe',f'CakeWalletPC-Windows-x64-6.5.2-{b}.zip',f'CakeWalletPC-Linux-x64-6.5.2-{b}.deb',f'CakeWalletPC-Linux-x64-6.5.2-{b}.tar.gz'}
+          rows=pathlib.Path('SHA256SUMS.txt').read_text().splitlines()
+          assert len(rows)==4 and {r.split('  ',1)[1] for r in rows}==expected
+          for name in expected: assert pathlib.Path(name).stat().st_size>1000000
+          PY
+          sha256sum --check SHA256SUMS.txt
+          cd ..
+          tag="pc-v6.5.2-$PC_BUILD"
+          printf '# Cake Wallet PC 6.5.2 — build %s\n\n' "$PC_BUILD" > release-notes.md
+          printf 'Community fork for Windows x64 and Linux x86-64. Not an official Cake Labs release.\n\n' >> release-notes.md
+          cat docs/builds/CAKE_WALLET_PC.md >> release-notes.md
+          printf '\n\nSource: `%s`\nCI: https://github.com/%s/actions/runs/%s\n' "$BUILD_COMMIT" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> release-notes.md
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$BUILD_COMMIT" --draft --prerelease --title "Cake Wallet PC 6.5.2 — Windows + Linux — build $PC_BUILD" --notes-file release-notes.md
+          gh release upload "$tag" dist/*-Setup.exe dist/*.zip dist/*.deb dist/*.tar.gz dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
+          gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"
