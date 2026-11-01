@@ -104,3 +104,7 @@ bugs. Test results are authoritative only after the corresponding run succeeds.
 ## Proteções adicionais de transações EVM
 
 O QR de recebimento acompanha a rede selecionada. Envios com vários destinatários são recusados, em vez de somar os valores para um único endereço. Tokens são resolvidos por contrato e rede, não apenas pelo símbolo; diferenças de casas decimais são rejeitadas. A preparação da assinatura é invalidada quando a carteira muda de rede, conexão ou é fechada. Memos de transferências nativas usam UTF-8 e entram na estimativa de gas; memos arbitrários em transferências ERC20 são recusados para preservar o calldata ABI. Esses cenários são testes obrigatórios do CI, sem fundos reais.
+
+## Recuperação não destrutiva em ambos os sistemas
+
+As proteções contra remoção automática do cache por erros genéricos de abertura e por heurísticas de altura se aplicam a Windows e Linux. Fechamentos nativos antes de renomear arquivos são aguardados nos dois sistemas. Os testes de falha de carregamento verificam a preservação do erro original, sem coleta de seeds nem abertura implícita de outras carteiras.

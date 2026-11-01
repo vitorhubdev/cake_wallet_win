@@ -77,11 +77,11 @@ class WalletLoadingService {
 
       return wallet;
     } catch (error, stack) {
-      // Windows XMR open failures (permissions, a lock, password or storage)
+      // Desktop XMR open failures (permissions, a lock, password or storage)
       // do not establish corruption. Preserve the original error and selection;
       // the caller already presents it. Never collect seeds or open unrelated
       // wallets implicitly as a consequence of an ordinary load failure.
-      if (Platform.isWindows && type == WalletType.monero) rethrow;
+      if ((Platform.isWindows || Platform.isLinux) && type == WalletType.monero) rethrow;
       String corruptedWalletsSeeds = "Corrupted wallets seeds (if retrievable, empty otherwise):";
 
       if (error is WalletDeprecationException) {

@@ -341,9 +341,9 @@ abstract class MoneroWalletBase
   @override
   Future<void> startSync() async {
     if (!_ownsNativeWallet) return;
-    // Do not discard a Windows cache, TX keys or Polyseed because of a height
+    // Do not discard a desktop cache, TX keys or Polyseed because of a height
     // heuristic. The native wallet retains its actual restore height.
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows && !Platform.isLinux) {
       try {
         _assertInitialHeight();
       } catch (_) {
@@ -593,14 +593,13 @@ abstract class MoneroWalletBase
   Future<void> renameWalletFiles(String newWalletName) async {
     final currentWalletDirPath = await pathForWalletDir(name: name, type: type);
     if (openedWalletsByPath["$currentWalletDirPath/$name"] != null) {
-      // NOTE: this is realistically only required on windows.
-      // That's why we await it only on that platform - other platforms actually understand
-      // the concept of a file properly...
+      // Desktop renames must await native persistence and handle release before
+      // copying files. POSIX unlink semantics do not make concurrent writes safe.
       printV("closing wallet");
       final wmaddr = wmPtr.ffiAddress();
       final waddr = openedWalletsByPath["$currentWalletDirPath/$name"]!.ffiAddress();
       openedWalletsByPath.remove("$currentWalletDirPath/$name");
-      if (Platform.isWindows) {
+      if (Platform.isWindows || Platform.isLinux) {
         await Isolate.run(() {
           monero.WalletManager_closeWallet(
               Pointer.fromAddress(wmaddr), Pointer.fromAddress(waddr), true);
