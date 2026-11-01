@@ -1,0 +1,54 @@
+name: Prepare PC transaction boundaries
+on:
+  push:
+    branches: [pc-transaction-boundaries]
+    paths: [.github/workflows/pc-transaction-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: source
+          ref: 6b81cad7f25b1a9e6e683b0a99c1ab9e020530a0
+      - name: Apply only the reviewed application and test files
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../audit/.audit/pc_transaction_guards.py
+          cp ../audit/cw_evm/lib/utils/transaction_currency.dart cw_evm/lib/utils/
+          cp ../audit/test/evm/pc_transaction_boundaries_test.dart test/evm/
+          git diff --check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Validate syntax and deterministic regressions before the full desktop gates
+        working-directory: source
+        run: |
+          set -euo pipefail
+          dart format --output=none cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/utils/transaction_currency.dart test/evm/pc_transaction_boundaries_test.dart
+          dart tool/windows_stability_checks.dart
+          git diff --exit-code -- .github pubspec_overrides.yaml tool/configure_windows_secrets.dart
+      - name: Commit source only
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git switch -c pc-transaction-result
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_evm/lib/evm_chain_wallet.dart cw_evm/lib/utils/transaction_currency.dart test/evm/pc_transaction_boundaries_test.dart
+          git diff --cached --check
+          git commit -m 'Bind EVM transaction preparation to one network and validate token contract identity' -m 'Reject stale signing after chain changes; resolve transfer/approval contracts independently of symbols; preserve zero-value protocol uses while rejecting negative amounts; estimate memo gas using the exact UTF-8 bytes. Require dedicated behavioral regressions in both desktop builds.'
+          git push origin HEAD:refs/heads/pc-transaction-result
