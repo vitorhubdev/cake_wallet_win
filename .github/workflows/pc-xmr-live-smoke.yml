@@ -1,0 +1,117 @@
+name: Observe fresh unfunded XMR recent-tip synchronization
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-xmr-live-smoke.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  observation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-linux-monero-native
+          path: native
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 41372228272
+          github-token: ${{ github.token }}
+      - name: Bound one native connection and recent-tip scan of an empty disposable wallet
+        run: |
+          set -euo pipefail
+          cat > /tmp/pc-live-observation.py <<'PY'
+          import ctypes as c, hashlib, json, os, pathlib, secrets, subprocess, sys, tempfile, time
+          EXPECTED='c75d5d3e67fcc4172bb1087890dad61e411ea9e3d4b1f637f87e86906b6f29f2'
+          def worker(library, root):
+              stage='load-native'
+              report={'scope':'Fresh empty mainnet wallet, recent-tip native sync only; not historical restore, UI, transaction sending or a speed benchmark.','paymentsSubmitted':0,'userWalletAccess':False,'node':'xmr-node.cakewallet.com:18081','status':'failed'}
+              active=None
+              started=time.monotonic()
+              try:
+                  lib=c.CDLL(library)
+                  def api(name,ret,*types):
+                      fn=getattr(lib,'MONERO_'+name);fn.restype=ret;fn.argtypes=list(types);return fn
+                  p,s,i,u64,u32,b=c.c_void_p,c.c_char_p,c.c_int,c.c_uint64,c.c_uint32,c.c_bool
+                  api('WalletManagerFactory_setLogLevel',None,i)(-1)
+                  manager=api('WalletManagerFactory_getWalletManager',p)()
+                  create=api('WalletManager_createWallet',p,p,s,s,s,i)
+                  close=api('WalletManager_closeWallet',b,p,p,b)
+                  status=api('Wallet_status',i,p)
+                  address=api('Wallet_address',p,p,u32,u32)
+                  seed=api('Wallet_seed',p,p,s)
+                  free=api('free',None,p)
+                  def read(fn,*args):
+                      ptr=fn(*args)
+                      if not ptr:raise RuntimeError('null-string')
+                      try:return c.string_at(ptr).decode('utf-8')
+                      finally:free(ptr)
+                  path=str(pathlib.Path(root)/'fresh-mainnet-wallet').encode()
+                  password=secrets.token_urlsafe(32).encode()
+                  stage='create-new-unfunded-wallet'
+                  active=create(manager,path,password,b'English',0)
+                  if not active or status(active)!=0:raise RuntimeError('create')
+                  original_address=read(address,active,0,0); original_seed=read(seed,active,b'')
+                  stage='connect-tls-default-node'
+                  initialize=api('Wallet_init',b,p,s,u64,s,s,b,b,s)
+                  initialized=initialize(active,b'https://xmr-node.cakewallet.com:18081',0,b'',b'',True,False,b'')
+                  if not initialized or status(active)!=0:raise RuntimeError('init')
+                  api('Wallet_setTrustedDaemon',None,p,b)(active,False)
+                  if not api('Wallet_connectToDaemon',b,p)(active):raise RuntimeError('connect')
+                  height=api('Wallet_daemonBlockChainHeight',u64,p)(active)
+                  if not 1000000<height<10000000:raise RuntimeError('height')
+                  report['nodeHeight']=height
+                  # This wallet was generated above, has no history or funds.
+                  # This test height never touches the application's restore policy.
+                  api('Wallet_setRefreshFromBlockHeight',None,p,u64)(active,height-20)
+                  stage='scan-recent-tip'
+                  refreshed=api('Wallet_refresh',b,p)(active)
+                  report['walletHeight']=api('Wallet_blockChainHeight',u64,p)(active)
+                  report['nativeSynchronized']=api('Wallet_synchronized',b,p)(active)
+                  report['balanceIsZero']=api('Wallet_balance',u64,p,u32)(active,0)==0
+                  report['untrustedDaemon']=not api('Wallet_trustedDaemon',b,p)(active)
+                  if not refreshed or status(active)!=0 or not report['nativeSynchronized'] or not report['balanceIsZero']:raise RuntimeError('sync')
+                  stage='store-close-reopen'
+                  if not api('Wallet_store',b,p,s)(active,b''):raise RuntimeError('store')
+                  old,active=active,None
+                  if not close(manager,old,False):raise RuntimeError('close')
+                  active=api('WalletManager_openWallet',p,p,s,s,i)(manager,path,password,0)
+                  if not active or status(active)!=0:raise RuntimeError('reopen')
+                  report['identityPreserved']=read(address,active,0,0)==original_address and read(seed,active,b'')==original_seed
+                  if not report['identityPreserved']:raise RuntimeError('identity')
+                  old,active=active,None
+                  if not close(manager,old,False):raise RuntimeError('close')
+                  report['status']='passed'
+              except Exception as error:
+                  report['failedStage']=stage;report['errorType']=type(error).__name__
+              finally:
+                  if active:
+                      try:close(manager,active,False)
+                      except Exception:pass
+                  report['observationDurationSeconds']=round(time.monotonic()-started,3)
+                  pathlib.Path(root,'result.json').write_text(json.dumps(report))
+          if len(sys.argv)==4 and sys.argv[1]=='--worker':
+              worker(sys.argv[2],sys.argv[3])
+          else:
+              library=pathlib.Path('native/libmonero_wallet2_api_c.so').resolve()
+              assert hashlib.sha256(library.read_bytes()).hexdigest()==EXPECTED
+              with tempfile.TemporaryDirectory(prefix='pc-unfunded-mainnet-',dir=os.environ['RUNNER_TEMP']) as root:
+                  try:
+                      process=subprocess.run([sys.executable,__file__,'--worker',str(library),root],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=90)
+                      result=pathlib.Path(root,'result.json')
+                      report=json.loads(result.read_text()) if process.returncode==0 and result.is_file() else {'status':'failed','failedStage':'native-worker','paymentsSubmitted':0}
+                  except subprocess.TimeoutExpired:
+                      report={'status':'inconclusive','failedStage':'90-second-process-deadline','paymentsSubmitted':0}
+              report['librarySha256']=EXPECTED
+              report['isReleaseGate']=False
+              pathlib.Path('fresh-xmr-live-observation.json').write_text(json.dumps(report,indent=2))
+              print(json.dumps(report,indent=2))
+          PY
+          python3 /tmp/pc-live-observation.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-fresh-xmr-live-observation
+          path: fresh-xmr-live-observation.json
+          retention-days: 7
+          if-no-files-found: error
