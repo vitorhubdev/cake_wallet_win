@@ -1,0 +1,68 @@
+name: Apply reviewed desktop Monero preservation parity
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-monero-desktop-parity.yml]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Prevent superseded candidate publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=$(gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41371575108 --jq .status)
+          if [ "$status" != completed ]; then
+            gh run cancel 41371575108 --repo vitorhubdev/cake_wallet_win
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: c7a435b22f8771a69c008048977c88eea990ad3a
+          persist-credentials: true
+      - name: Apply only checksum-reviewed platform guards and regression coverage
+        run: |
+          python3 - <<'PY'
+          import hashlib,pathlib
+          expected={
+            'cw_monero/lib/monero_wallet.dart':'906f4279ea5c92fc86d7bfb3144d0e278e3e302ef306bdc2b1b58fca365f9e74',
+            'cw_monero/lib/monero_wallet_service.dart':'df251fbc8cf9b7bcd8cca793d196d6e842bff2eb36756f698018558a131738b1',
+            'lib/core/wallet_loading_service.dart':'47af8237b525dc1991de08e7f006d95dd20a46a248cf50b94317e92498e72c6b',
+            'test/core/windows_wallet_loading_test.dart':'b350afa46605111f1d57c5ef29392f966ed13f80ddb0890177382b0e9820d59f',
+            'scripts/pc/build_linux.sh':'bd66aa2ac51a8e004dd386accd6d664074d507da2ab11a3b745f395e26119d27',
+          }
+          for name,digest in expected.items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()==digest,name
+          def replace(name,old,new):
+              p=pathlib.Path(name);s=p.read_text()
+              assert s.count(old)==1,(name,old)
+              p.write_text(s.replace(old,new))
+          replace('cw_monero/lib/monero_wallet.dart','if (!Platform.isWindows) {','if (!(Platform.isWindows || Platform.isLinux)) {')
+          replace('cw_monero/lib/monero_wallet.dart','Do not discard a Windows cache, TX keys or Polyseed','Do not discard a desktop cache, TX keys or Polyseed')
+          replace('cw_monero/lib/monero_wallet_service.dart','if (Platform.isWindows) rethrow;','if (Platform.isWindows || Platform.isLinux) rethrow;')
+          replace('lib/core/wallet_loading_service.dart','if (Platform.isWindows && type == WalletType.monero) rethrow;','if ((Platform.isWindows || Platform.isLinux) && type == WalletType.monero) rethrow;')
+          replace('lib/core/wallet_loading_service.dart','Windows XMR open failures','Desktop XMR open failures')
+          replace('test/core/windows_wallet_loading_test.dart','Windows Monero load failure preserves user control','Desktop Monero load failure preserves user control')
+          replace('test/core/windows_wallet_loading_test.dart','skip: !Platform.isWindows','skip: !(Platform.isWindows || Platform.isLinux)')
+          replace('scripts/pc/build_linux.sh','flutter test test/tool/windows_secrets_test.dart test/core/wallet_name_validator_test.dart','flutter test test/tool/windows_secrets_test.dart test/core/windows_wallet_loading_test.dart test/core/wallet_name_validator_test.dart')
+          doc=pathlib.Path('docs/builds/CAKE_WALLET_PC.md')
+          doc.write_text(doc.read_text()+'\n## Desktop Monero error preservation\n\nWindows and Linux both preserve the original XMR opening error and existing files. A low initial height does not trigger automatic cache deletion. Ordinary opening or credential errors do not trigger seed extraction or selection of unrelated wallets. The existing mocked loading-service regression now runs on both desktop platforms; native wallet identity/storage and onboarding checks remain separate mandatory gates. These changes do not certify all rename or manual recovery flows.\n')
+          PY
+          git diff --check
+          git diff --exit-code -- .github pubspec_overrides.yaml cw_monero/pubspec.yaml tool/configure_windows_secrets.dart
+          git diff --stat
+      - name: Commit reviewed source to a non-publishing branch
+        run: |
+          set -euo pipefail
+          git switch -c pc-xmr-linux-parity
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_monero/lib/monero_wallet.dart cw_monero/lib/monero_wallet_service.dart lib/core/wallet_loading_service.dart test/core/windows_wallet_loading_test.dart scripts/pc/build_linux.sh docs/builds/CAKE_WALLET_PC.md
+          git diff --cached --check
+          git commit -m 'Preserve Monero wallet data on Linux opening and synchronization errors' -m 'Extend existing Windows non-destructive error and restore-height policies to Linux, and execute the existing loading-service behavioral regressions on both desktop platforms. No key derivation, native dependency, transaction or restore-height value is changed.'
+          git push origin HEAD:refs/heads/pc-xmr-linux-parity
+          git rev-parse HEAD >> "$GITHUB_STEP_SUMMARY"
