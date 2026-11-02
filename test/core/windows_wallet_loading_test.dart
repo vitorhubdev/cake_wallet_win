@@ -21,7 +21,7 @@ class _Wallet extends Mock
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  group('Windows Monero load failure preserves user control', () {
+  group('Desktop Monero load failure preserves user control', () {
     late _Keys keys;
     late _Preferences preferences;
     late _Service service;
@@ -75,5 +75,5 @@ void main() {
       verifyNoMoreInteractions(service);
       verifyZeroInteractions(keys);
     });
-  }, skip: !Platform.isWindows);
+  }, skip: !(Platform.isWindows || Platform.isLinux));
 }

@@ -341,9 +341,9 @@ abstract class MoneroWalletBase
   @override
   Future<void> startSync() async {
     if (!_ownsNativeWallet) return;
-    // Do not discard a Windows cache, TX keys or Polyseed because of a height
+    // Do not discard a desktop cache, TX keys or Polyseed because of a height
     // heuristic. The native wallet retains its actual restore height.
-    if (!Platform.isWindows) {
+    if (!(Platform.isWindows || Platform.isLinux)) {
       try {
         _assertInitialHeight();
       } catch (_) {

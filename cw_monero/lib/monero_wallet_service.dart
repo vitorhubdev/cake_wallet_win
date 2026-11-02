@@ -206,7 +206,7 @@ class MoneroWalletService extends WalletService<
 
       // A wrong password, locked file or initialization error is not proof of
       // cache corruption. Automatic deletion also loses TX keys and Polyseed.
-      if (Platform.isWindows) rethrow;
+      if (Platform.isWindows || Platform.isLinux) rethrow;
       switch (openWalletTry) {
         case OpenWalletTry.initial:
           await restoreOrResetWalletFiles(name);
