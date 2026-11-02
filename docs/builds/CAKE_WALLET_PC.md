@@ -17,9 +17,20 @@ Install with `sudo apt install ./CakeWalletPC-Linux-x64-6.5.2-<build>.deb`.
 The `.tar.gz` contains the same complete application bundle: extract it and run
 `./cake-wallet-pc`. The launcher supplies its own library directory; it does not
 require Flatpak or FUSE. A desktop Secret Service (for example GNOME Keyring),
-GTK3 and the dependencies listed by the DEB are needed. The CI builds against
-Ubuntu 22.04 and verifies runtime dependencies rather than claiming support for
-every distribution. ARM, musl/Alpine and 32-bit builds are not supplied.
+GTK3 and the dependencies listed by the DEB are needed. The tested baseline is
+Ubuntu 24.04 x86-64, with glibc >= 2.39 and libstdc++ >= 13.2. Compatible
+Ubuntu 24.04 derivatives must provide the same runtime dependencies. Ubuntu
+22.04, ARM, musl/Alpine and 32-bit builds are not supported by these binaries.
+The portable archive has the same runtime requirements as the DEB; it does
+not bundle or replace the system C library.
+
+The previous Linux pipeline mixed a native library built on Ubuntu 24.04 with
+an Ubuntu 22.04 application runner. The pinned Monero library requires
+GLIBC_2.38 and GLIBCXX_3.4.32, which the older runner cannot satisfy. Native and
+application builds now use the same Ubuntu 24.04 baseline. CI verifies the
+native manifest, ELF architecture, host runtime, dependency resolution and
+actual library loading before compiling the application. The existing XMR
+identity, password, storage and desktop lifecycle gates remain mandatory.
 
 Flatpak is technically possible. It is not included in this release because
 sandbox permissions, USB hardware-wallet access and persistent keyring behavior
