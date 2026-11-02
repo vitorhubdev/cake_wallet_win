@@ -69,6 +69,8 @@ def main() -> None:
         shutil.copy2(ROOT/'assets/images/cakewallet_logo.png',icon)
         (stage/'DEBIAN').mkdir()
         installed_size=sum(p.stat().st_size for p in app.rglob('*') if p.is_file())//1024
+        # Match the compiler/runtime baseline. The pinned native XMR library
+        # requires GLIBC_2.38 and GLIBCXX_3.4.32; Ubuntu 22.04 cannot load it.
         control=f'''Package: cake-wallet-pc
 Version: {args.version}-{args.build}
 Section: utils
@@ -76,12 +78,13 @@ Priority: optional
 Architecture: amd64
 Maintainer: Cake Wallet PC community <108148783+vitorhubdev@users.noreply.github.com>
 Installed-Size: {installed_size}
-Depends: libc6 (>= 2.35), libstdc++6 (>= 12), libgtk-3-0, libsecret-1-0, libjsoncpp25, libsqlite3-0, libblkid1, liblzma5, libssl3, libudev1, libusb-1.0-0, libayatana-appindicator3-1, libnotify4
+Depends: libc6 (>= 2.39), libstdc++6 (>= 13.2), libgtk-3-0t64, libsecret-1-0, libjsoncpp25, libsqlite3-0, libblkid1, liblzma5, libssl3t64, libudev1, libusb-1.0-0, libayatana-appindicator3-1, libnotify4
 Recommends: gnome-keyring
 Homepage: https://github.com/vitorhubdev/cake_wallet_win
 Description: Cake Wallet PC community desktop wallet
- Linux x86-64 build with real system keyring support and a separate profile.
- Based on upstream Cake Wallet 6.5.2. Not an official Cake Labs release.
+ Linux x86-64 build for Ubuntu 24.04-compatible desktop runtimes, with real
+ system keyring support and a separate profile. Not compatible with Ubuntu
+ 22.04. Based on Cake Wallet 6.5.2. Not an official Cake Labs release.
 '''
         (stage/'DEBIAN/control').write_text(control)
         for path in stage.rglob('*'):
