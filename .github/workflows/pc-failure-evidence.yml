@@ -1,0 +1,27 @@
+name: Preserve exact PC failure log
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-failure-evidence.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  logs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch the exact failed Linux job log
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          gh api repos/vitorhubdev/cake_wallet_win/actions/jobs/124987233848/logs > evidence/linux-job.log
+          sha256sum evidence/linux-job.log > evidence/SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-linux-failure-evidence
+          path: evidence/
+          retention-days: 7
+          if-no-files-found: error
