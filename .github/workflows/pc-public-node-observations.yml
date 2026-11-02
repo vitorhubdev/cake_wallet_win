@@ -1,0 +1,72 @@
+name: Observe public desktop RPC availability
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-public-node-observations.yml]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1022d5751ca5813fbf6c8643ac775d789faf24d0
+          persist-credentials: false
+      - name: Read only public node identity and height without wallet addresses
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures, datetime, hashlib, json, pathlib, re, time, urllib.request, urllib.error
+          inputs=[('xmr','assets/node_list.yml','74e7d1a13227e83a848eb09edaa5b31b6e0b54dcbc6c54da3d3f9feae6053f8d'),('ethereum','assets/ethereum_server_list.yml','00ba995bd3b84d0812b875c2cd6c267a32bf5c10f6238d5e95d6ad81da6b46b3')]
+          endpoints=[]
+          for network,name,digest in inputs:
+              raw=pathlib.Path(name).read_bytes()
+              assert hashlib.sha256(raw).hexdigest()==digest
+              for block in re.split(r'(?m)^-\s*$',raw.decode()):
+                  uri=re.search(r'(?m)^\s+uri:\s*([^\s]+)\s*$',block)
+                  if not uri: continue
+                  host=uri.group(1)
+                  if '.onion' in host or not re.search(r'(?m)^\s+useSSL:\s*true\s*$',block): continue
+                  assert re.fullmatch(r'[a-zA-Z0-9.-]+(?::[0-9]+)?',host)
+                  endpoints.append((network,host))
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          def probe(endpoint):
+              network,host=endpoint
+              result={'network':network,'host':host,'walletDataSent':False}
+              start=time.monotonic()
+              try:
+                  method='get_info' if network=='xmr' else 'eth_chainId'
+                  body=json.dumps({'jsonrpc':'2.0','id':'pc-public-metadata','method':method,'params':[] if network=='ethereum' else {}}).encode()
+                  url='https://'+host+('/json_rpc' if network=='xmr' else '')
+                  request=urllib.request.Request(url,data=body,headers={'Content-Type':'application/json','User-Agent':'CakeWalletPC-public-metadata-check'},method='POST')
+                  with urllib.request.build_opener(NoRedirect()).open(request,timeout=12) as response:
+                      data=response.read(65537)
+                  if len(data)>65536: raise ValueError('response-size')
+                  payload=json.loads(data)
+                  if network=='ethereum':
+                      chain=payload.get('result')
+                      result.update({'healthy':chain=='0x1','chainIdMatched':chain=='0x1'})
+                  else:
+                      info=payload.get('result',{})
+                      height=info.get('height',0)
+                      mainnet=info.get('nettype')=='mainnet' or info.get('mainnet') is True
+                      result.update({'healthy':info.get('status')=='OK' and isinstance(height,int) and height>0 and mainnet,'mainnetReported':mainnet,'heightReported':height if isinstance(height,int) else None,'synchronizedReported':info.get('synchronized')})
+              except Exception as error:
+                  result.update({'healthy':False,'errorType':type(error).__name__})
+                  if isinstance(error,urllib.error.HTTPError): result['httpStatus']=error.code
+              result['runnerLatencyMilliseconds']=round((time.monotonic()-start)*1000)
+              return result
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              observations=list(pool.map(probe,endpoints))
+          report={'observedAtUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'scope':'Public metadata from a GitHub runner; not wallet synchronization, transactions, user-network latency, or future availability. No node configuration changed.','observations':observations}
+          pathlib.Path('public-node-observations.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-public-node-observations
+          path: public-node-observations.json
+          retention-days: 7
+          if-no-files-found: error
