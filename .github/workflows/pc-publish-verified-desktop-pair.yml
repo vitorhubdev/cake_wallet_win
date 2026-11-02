@@ -1,0 +1,38 @@
+name: Publish verified Cake Wallet PC desktop pair
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-publish-verified-desktop-pair.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pc-verified-desktop-pair-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1ed676139161a5260a40ca6a42158941905fdc46
+          path: publisher
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1022d5751ca5813fbf6c8643ac775d789faf24d0
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify passing platform jobs, exact source delta, artifact bytes and installer identity before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PC_SOURCE_DIR: ${{ github.workspace }}/source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile publisher/.audit/release/publish_pc_pair.py
+          python3 publisher/.audit/release/publish_pc_pair.py
