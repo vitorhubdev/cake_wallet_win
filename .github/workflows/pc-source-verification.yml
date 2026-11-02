@@ -1,0 +1,43 @@
+name: Verify pinned PC release source
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-source-verification.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4adc55187f55a4c4d0a31b4e38056c2bee760264
+          persist-credentials: false
+      - name: Archive the exact tracked source and tree
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          test "$(git rev-parse HEAD)" = '4adc55187f55a4c4d0a31b4e38056c2bee760264'
+          git archive --format=tar.gz --output=evidence/pc-source.tar.gz HEAD
+          git ls-tree -r HEAD > evidence/source-tree.txt
+          git show -s --format=fuller HEAD > evidence/source-commit.txt
+          sha256sum evidence/pc-source.tar.gz > evidence/SHA256SUMS.txt
+          find scripts/pc tool .github/workflows -maxdepth 2 -type f -print | sort > evidence/source-paths.txt
+          cat evidence/source-commit.txt
+          cat evidence/SHA256SUMS.txt
+      - name: Read failed run metadata and existing diagnostic artifact inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41352979560 > evidence/prior-run.json
+          gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41352979560/jobs > evidence/prior-jobs.json
+          gh api repos/vitorhubdev/cake_wallet_win/actions/runs/41352979560/artifacts > evidence/prior-artifacts.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-source-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
