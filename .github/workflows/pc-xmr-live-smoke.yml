@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > /tmp/pc-live-observation.py <<'PY'
-          import ctypes as c, hashlib, json, os, pathlib, secrets, subprocess, sys, tempfile, time
+          import ctypes as c, hashlib, json, os, pathlib, re, secrets, subprocess, sys, tempfile, time
           EXPECTED='c75d5d3e67fcc4172bb1087890dad61e411ea9e3d4b1f637f87e86906b6f29f2'
           def worker(library, root):
               stage='load-native'
@@ -67,6 +67,15 @@ jobs:
                   api('Wallet_setRefreshFromBlockHeight',None,p,u64)(active,height-20)
                   stage='scan-recent-tip'
                   refreshed=api('Wallet_refresh',b,p)(active)
+                  report['refreshReturned']=refreshed
+                  report['nativeStatus']=status(active)
+                  error=read(api('Wallet_errorString',p,p),active)
+                  for private in (original_address, original_seed, password.decode(), root):
+                      error=error.replace(private,'[redacted]')
+                  if original_seed.strip():
+                      error=re.sub(r'\s+'.join(re.escape(w) for w in original_seed.split()),'[redacted]',error)
+                  error=re.sub(r'\b[A-Za-z0-9+/=_-]{32,}\b','[redacted]',error)
+                  report['sanitizedNativeError']=error[:350]
                   report['walletHeight']=api('Wallet_blockChainHeight',u64,p)(active)
                   report['nativeSynchronized']=api('Wallet_synchronized',b,p)(active)
                   report['balanceIsZero']=api('Wallet_balance',u64,p,u32)(active,0)==0
