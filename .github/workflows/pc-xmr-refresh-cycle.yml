@@ -1,0 +1,56 @@
+name: Observe bounded unfunded XMR refresh cycles
+on:
+  push:
+    branches: [pc-release-source-verification]
+    paths: [.github/workflows/pc-xmr-refresh-cycle.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: bb6668db91fba245782c79ba75b80eea4e1ff2f6
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-linux-monero-native
+          path: native
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 41372228272
+          github-token: ${{ github.token }}
+      - name: Run the same private disposable-wallet probe with bounded read-only refresh cycles
+        run: |
+          python3 - <<'PY'
+          import hashlib,pathlib,re,subprocess,sys,textwrap
+          raw=pathlib.Path('.github/workflows/pc-xmr-live-smoke.yml').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='6e9c9ecd1bd01c5cf93953a77ef972f3671fe9fe'
+          match=re.search(r"cat > /tmp/pc-live-observation.py <<'PY'\n(.*?)\n          PY",raw.decode(),re.S)
+          assert match
+          source=textwrap.dedent(match.group(1))
+          old="        refreshed=api('Wallet_refresh',b,p)(active)"
+          new="""        refresh=api('Wallet_refresh',b,p)
+                  refreshed=False
+                  refresh_deadline=time.monotonic()+45
+                  for cycle in range(12):
+                      refreshed=refresh(active)
+                      report['refreshCycles']=cycle+1
+                      if not refreshed or api('Wallet_synchronized',b,p)(active):break
+                      if time.monotonic()>=refresh_deadline:break
+                      time.sleep(1)
+          """.rstrip()
+          assert source.count(old)==1
+          source=source.replace(old,new)
+          compile(source,'/tmp/pc-live-observation.py','exec')
+          path=pathlib.Path('/tmp/pc-live-observation.py');path.write_text(source)
+          subprocess.run([sys.executable,str(path)],check=True,timeout=110)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-fresh-xmr-refresh-cycles
+          path: fresh-xmr-live-observation.json
+          retention-days: 7
+          if-no-files-found: error
