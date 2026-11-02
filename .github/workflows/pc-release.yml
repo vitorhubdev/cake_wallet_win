@@ -90,7 +90,7 @@ jobs:
           - platform: Windows
             runner: windows-2022
           - platform: Linux
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     env:
@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 install --no-install-recommends -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libjsoncpp-dev libsqlite3-dev libblkid-dev liblzma-dev libssl-dev libudev-dev libusb-1.0-0-dev libayatana-appindicator3-dev libnotify-dev libstdc++-12-dev xvfb xauth dbus-x11 gnome-keyring xdotool desktop-file-utils
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 install --no-install-recommends -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libjsoncpp-dev libsqlite3-dev libblkid-dev liblzma-dev libssl-dev libudev-dev libusb-1.0-0-dev libayatana-appindicator3-dev libnotify-dev libstdc++-13-dev xvfb xauth dbus-x11 gnome-keyring xdotool desktop-file-utils
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: '3.41.9'
@@ -235,6 +235,10 @@ jobs:
         with:
           name: pc-linux-monero-native
           path: build/linux-native/monero
+      - name: Verify Linux runtime and pinned native ABI before compilation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: python3 scripts/pc/verify_linux_runtime.py build/linux-native/monero/libmonero_wallet2_api_c.so
       - name: Compile Windows release and package all native runtimes
         if: runner.os == 'Windows'
         shell: pwsh
