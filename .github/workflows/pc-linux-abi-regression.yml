@@ -1,0 +1,52 @@
+name: Linux native ABI baseline regression
+on:
+  push:
+    branches: [pc-linux-abi-compatibility]
+    paths: [.github/workflows/pc-linux-abi-regression.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  abi:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-linux-monero-native
+          path: native
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 41352979560
+          github-token: ${{ github.token }}
+      - name: Verify exact native binary and exercise host dynamic loading
+        env:
+          TARGET_OS: ${{ matrix.os }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ctypes, hashlib, json, os, pathlib, re, subprocess
+          p=pathlib.Path('native/libmonero_wallet2_api_c.so').resolve()
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='c75d5d3e67fcc4172bb1087890dad61e411ea9e3d4b1f637f87e86906b6f29f2'
+          versions=subprocess.check_output(['readelf','--version-info',str(p)],text=True)
+          requirements={name:sorted(set(re.findall(name+r'_[0-9.]+',versions))) for name in ('GLIBC','GLIBCXX')}
+          print(json.dumps({'runner':os.environ['TARGET_OS'],'requirements':requirements}))
+          try:
+              native=ctypes.CDLL(str(p))
+          except OSError as e:
+              missing=sorted(set(re.findall(r'(?:GLIBC|GLIBCXX)_[0-9.]+',str(e))))
+              print(json.dumps({'loaded':False,'missingVersions':missing}))
+              if os.environ['TARGET_OS']!='ubuntu-22.04' or not missing:
+                  raise SystemExit('Unexpected native loading failure')
+          else:
+              if os.environ['TARGET_OS']!='ubuntu-24.04':
+                  raise SystemExit('The original failure did not reproduce')
+              f=native.MONERO_checksum_wallet2_api_c_h
+              f.restype=ctypes.c_char_p
+              f.argtypes=[]
+              assert f().decode()=='f1f24af3a9ae7e136c67fbbeffb1af0f7a3dd6cb70a7c43d5bd36a60fdb4a64f'
+              print(json.dumps({'loaded':True,'abiHeaderMatched':True,'walletOperations':False}))
+          PY
