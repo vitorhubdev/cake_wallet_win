@@ -32,15 +32,18 @@ jobs:
           assert match
           source=textwrap.dedent(match.group(1))
           old="        refreshed=api('Wallet_refresh',b,p)(active)"
-          new="""        refresh=api('Wallet_refresh',b,p)
-                  refreshed=False
-                  refresh_deadline=time.monotonic()+45
-                  for cycle in range(12):
-                      refreshed=refresh(active)
-                      report['refreshCycles']=cycle+1
-                      if not refreshed or api('Wallet_synchronized',b,p)(active):break
-                      if time.monotonic()>=refresh_deadline:break
+          new="""        report['connectionStatus']=api('Wallet_connected',i,p)(active)
+                  report['targetHeight']=api('Wallet_daemonBlockChainTargetHeight',u64,p)(active)
+                  report['offlineFlag']=api('Wallet_isOffline',b,p)(active)
+                  api('Wallet_startRefresh',None,p)(active)
+                  deadline=time.monotonic()+45
+                  cycles=0
+                  while not api('Wallet_synchronized',b,p)(active) and time.monotonic()<deadline:
+                      cycles+=1
                       time.sleep(1)
+                  api('Wallet_pauseRefresh',None,p)(active)
+                  report['observedPolls']=cycles
+                  refreshed=status(active)==0
           """.rstrip()
           assert source.count(old)==1
           source=source.replace(old,new)
