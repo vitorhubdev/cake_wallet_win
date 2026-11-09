@@ -300,7 +300,7 @@ Future<MoneroNodeHealth> probeMoneroNode({
     return result(MoneroNodeState.timeout);
   } on SocketException catch (error) {
     final code = error.osError?.errorCode;
-    if ({111, 61, 10061}.contains(code)) return result(MoneroNodeState.connectionRefused);
+    if ({111, 61, 1225, 10061}.contains(code)) return result(MoneroNodeState.connectionRefused);
     // DNS descriptions are used only for classification, never retained/displayed.
     final message = error.message.toLowerCase();
     if (message.contains('host lookup') ||

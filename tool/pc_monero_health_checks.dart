@@ -214,7 +214,7 @@ Future<void> main(List<String> arguments) async {
   );
   check(
     refused.state == MoneroNodeState.connectionRefused,
-    'Refused TCP classified without claiming an IP ban',
+    'Refused TCP classified without claiming an IP ban: ${refused.state}',
   );
   if (arguments.length == 2) {
     final context = SecurityContext()
