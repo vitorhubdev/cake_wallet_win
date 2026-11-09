@@ -1,0 +1,58 @@
+name: Import reviewed PC 6.5.3 candidate
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-v653-candidate-import.yml]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1022d5751ca5813fbf6c8643ac775d789faf24d0
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Import only the reviewed source bundle and verify all identities
+        env:
+          BUNDLE_URL: https://opinion-settings-days-chem.trycloudflare.com/b95e02e196a30e32ff468ccaf1d1c74200ad95de0be289b4/candidate.bundle
+        run: |
+          set -euo pipefail
+          # This temporary endpoint serves one public-source file and no other
+          # VM paths. It is not a VM management URL or a repository credential.
+          curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 60 "$BUNDLE_URL" -o "$RUNNER_TEMP/candidate.bundle"
+          test "$(stat -c %s "$RUNNER_TEMP/candidate.bundle")" = 41356
+          echo "884ec1175660bc6d9125a78364b99aa9cc87e581f5f2b392256e8ba80fcb3c7e  $RUNNER_TEMP/candidate.bundle" | sha256sum --check -
+          git fetch --no-tags https://github.com/cake-tech/cake_wallet.git refs/tags/v6.5.3
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = d803aecf9de21461c7459c974ce5e3f2d92b70ed
+          git bundle verify "$RUNNER_TEMP/candidate.bundle"
+          git fetch "$RUNNER_TEMP/candidate.bundle" refs/heads/pc-v6.5.3-linux-candidate-20261108
+          test "$(git rev-parse FETCH_HEAD)" = d4d1a09fb970cb65978bad6c10727fc1322704be
+          test "$(git rev-parse 'FETCH_HEAD^{tree}')" = 125e6eaa1ef10240116ee7048763ff68db7b0fc8
+          test "$(git show -s --format=%P FETCH_HEAD)" = '1022d5751ca5813fbf6c8643ac775d789faf24d0 d803aecf9de21461c7459c974ce5e3f2d92b70ed'
+          git checkout --detach d4d1a09fb970cb65978bad6c10727fc1322704be
+          git diff --check 1022d5751ca5813fbf6c8643ac775d789faf24d0 HEAD
+          python3 scripts/pc/test_package_appimage.py
+          python3 -m py_compile scripts/pc/package_appimage.py scripts/pc/runtime/verify.py scripts/windows/prepare_dependencies.py
+          bash -n scripts/pc/build_linux.sh scripts/pc/runtime/smoke.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-v653-reviewed-source-evidence
+          path: docs/audits/CAKE_PC_V653_*
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish only the non-release candidate branch
+        run: |
+          set -euo pipefail
+          branch=pc-v6.5.3-linux-candidate-20261108
+          existing=$(git ls-remote --heads origin "refs/heads/$branch" | cut -f1)
+          test -z "$existing" || test "$existing" = d4d1a09fb970cb65978bad6c10727fc1322704be
+          git push origin HEAD:"refs/heads/$branch"
+          printf 'Candidate: `%s`\nTree: `%s`\nMain was not changed. No binaries were released.\n' "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+      - name: Start the full non-publishing desktop and cross-distro validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pc-release.yml --ref pc-v6.5.3-linux-candidate-20261108 --repo vitorhubdev/cake_wallet_win
