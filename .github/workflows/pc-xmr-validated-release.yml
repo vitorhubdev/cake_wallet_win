@@ -1,0 +1,154 @@
+name: Validate and release Monero desktop stability
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-xmr-validated-release.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pc-xmr-validated-release-20261109
+  cancel-in-progress: false
+jobs:
+  source-and-dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      commit: ${{ steps.dispatch.outputs.commit }}
+      run: ${{ steps.dispatch.outputs.run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: pc-xmr-stability-20261109
+          persist-credentials: true
+      - name: Keep the diagnostic transport boundary testable without mutating the node
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 6c4ef7ad43af21e2fc5156489a7743544f9c879b
+          test "$(git rev-parse HEAD:lib/new-ui/widgets/windows/pc_monero_diagnostics.dart)" = f6a385b788fa295e8c4e867190b7ebdd03e174ff
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('lib/new-ui/widgets/windows/pc_monero_diagnostics.dart')
+          s=p.read_text()
+          assert s.count('    final snapshot = Node.fromMap(current.toMap());\n')==1
+          assert s.count('await snapshot.probeMoneroHealth(')==1
+          s=s.replace('    final snapshot = Node.fromMap(current.toMap());\n', '')
+          s=s.replace('await snapshot.probeMoneroHealth(', 'await current.probeMoneroHealth(')
+          # Node.probeMoneroHealth snapshots routing/credentials synchronously
+          # before awaiting I/O. Preserve the override boundary for widget tests.
+          p.write_text(s)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/new-ui/widgets/windows/pc_monero_diagnostics.dart
+          git commit -m 'Preserve the node probe boundary for deterministic desktop widget regressions'
+          git push --atomic origin HEAD:refs/heads/pc-xmr-stability-20261109 HEAD:refs/heads/pc-v6.5.3-linux-candidate-20261108
+      - name: Dispatch the full desktop and cross-distribution workflow at this exact source
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          gh workflow run pc-release.yml --ref pc-xmr-stability-20261109 --repo vitorhubdev/cake_wallet_win
+          for i in $(seq 1 30); do
+            run=$(gh api "repos/vitorhubdev/cake_wallet_win/actions/runs?head_sha=$sha&event=workflow_dispatch&per_page=20" --jq '.workflow_runs[] | select(.path==".github/workflows/pc-release.yml" and .head_branch=="pc-xmr-stability-20261109") | .id' | head -1)
+            if [ -n "$run" ]; then
+              echo "commit=$sha" >> "$GITHUB_OUTPUT"
+              echo "run=$run" >> "$GITHUB_OUTPUT"
+              echo "Exact source: $sha; full CI: https://github.com/vitorhubdev/cake_wallet_win/actions/runs/$run" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 1
+  release-after-validation:
+    needs: source-and-dispatch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_SOURCE: ${{ needs.source-and-dispatch.outputs.commit }}
+      BUILD_RUN: ${{ needs.source-and-dispatch.outputs.run }}
+    steps:
+      - name: Require full desktop and cross-distribution validation
+        run: |
+          set -euo pipefail
+          gh run watch "$BUILD_RUN" --repo vitorhubdev/cake_wallet_win --exit-status --interval 30 > /tmp/build-progress.log
+          gh api "repos/vitorhubdev/cake_wallet_win/actions/runs/$BUILD_RUN" > /tmp/run.json
+          gh api "repos/vitorhubdev/cake_wallet_win/actions/runs/$BUILD_RUN/jobs?per_page=100" > /tmp/jobs.json
+          test "$(gh api repos/vitorhubdev/cake_wallet_win/git/ref/heads/pc-v6.5.3-linux-candidate-20261108 --jq .object.sha)" = "$EXPECTED_SOURCE"
+          python3 - <<'PY'
+          import json,os,pathlib
+          r=json.loads(pathlib.Path('/tmp/run.json').read_text())
+          jobs=json.loads(pathlib.Path('/tmp/jobs.json').read_text())
+          assert r['head_sha']==os.environ['EXPECTED_SOURCE']
+          assert r['head_repository']['full_name']=='vitorhubdev/cake_wallet_win'
+          assert r['head_branch']=='pc-xmr-stability-20261109'
+          assert r['event']=='workflow_dispatch' and r['conclusion']=='success'
+          required={'identity','windows-native','linux-native / monero','Build and verify Windows x64','Build and verify Linux x64'}
+          required|={'linux-runtimes / AppImage '+x for x in ['ubuntu-24-04','ubuntu-26-04','fedora-44','fedora-45','archlinux-base-20261101-0-620205']}
+          actual={j['name']:j for j in jobs['jobs']}
+          assert required.issubset(actual), (required-actual.keys())
+          for name in required:
+              assert actual[name]['conclusion']=='success', name
+          build=1000+r['run_number']
+          assert 0<build<65535
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('PC_BUILD='+str(build)+'\n')
+          pathlib.Path('VALIDATION.json').write_text(json.dumps({'source':r['head_sha'],'run':r['html_url'],'version':'6.5.3+'+str(build),'requiredJobs':{n:actual[n]['conclusion'] for n in sorted(required)},'scope':'CI native storage/onboarding/installer and container runtime checks; not a mainnet payment or physical hardware-wallet certification'},indent=2)+'\n')
+          PY
+      - name: Download only matching Windows and Linux distributions
+        run: |
+          set -euo pipefail
+          mkdir dist
+          gh run download "$BUILD_RUN" --repo vitorhubdev/cake_wallet_win --name pc-Windows-distribution --dir dist
+          gh run download "$BUILD_RUN" --repo vitorhubdev/cake_wallet_win --name pc-Linux-distribution --dir dist
+      - name: Verify exact artifact set, checksums and embedded source identity without executing binaries
+        run: |
+          set -euo pipefail
+          cd dist
+          cat SHA256SUMS-windows.txt SHA256SUMS-linux.txt | sort > SHA256SUMS.txt
+          python3 - <<'PY'
+          import json,os,pathlib,re,tarfile,zipfile
+          b=os.environ['PC_BUILD'];source=os.environ['EXPECTED_SOURCE']
+          expected={f'CakeWalletPC-Windows-x64-6.5.3-{b}-Setup.exe',f'CakeWalletPC-Windows-x64-6.5.3-{b}.zip',f'CakeWalletPC-Linux-x64-6.5.3-{b}.deb',f'CakeWalletPC-Linux-x64-6.5.3-{b}.tar.gz',f'CakeWalletPC-Linux-x64-6.5.3-{b}.AppImage'}
+          rows=pathlib.Path('SHA256SUMS.txt').read_text().splitlines()
+          assert len(rows)==5
+          assert all(re.fullmatch(r'[0-9a-f]{64}  [A-Za-z0-9_.-]+',row) for row in rows)
+          assert {row.split('  ')[1] for row in rows}==expected
+          for name in expected:assert pathlib.Path(name).is_file() and pathlib.Path(name).stat().st_size>1000000
+          with zipfile.ZipFile(f'CakeWalletPC-Windows-x64-6.5.3-{b}.zip') as archive:
+              files=[i for i in archive.infolist() if i.filename.endswith('build-info.json')]
+              assert len(files)==1 and files[0].file_size<65536
+              win=json.loads(archive.read(files[0]))
+          with tarfile.open(f'CakeWalletPC-Linux-x64-6.5.3-{b}.tar.gz') as archive:
+              files=[i for i in archive if i.name.endswith('/build-info.json') and i.isfile()]
+              assert len(files)==1 and files[0].size<65536
+              linux=json.load(archive.extractfile(files[0]))
+          for info in [win,linux]:
+              assert info['commit']==source
+              assert info['upstreamCommit']=='d803aecf9de21461c7459c974ce5e3f2d92b70ed'
+              assert info['version']=='6.5.3+'+b
+          PY
+          sha256sum --check SHA256SUMS.txt
+      - name: Publish the verified release only if the candidate was not superseded
+        run: |
+          set -euo pipefail
+          repo=vitorhubdev/cake_wallet_win
+          test "$(gh api repos/$repo/git/ref/heads/pc-v6.5.3-linux-candidate-20261108 --jq .object.sha)" = "$EXPECTED_SOURCE"
+          tag="pc-v6.5.3-$PC_BUILD"
+          printf '# Cake Wallet PC 6.5.3 — Monero stability — build %s\n\n' "$PC_BUILD" > release-notes.md
+          printf 'Community fork, not an official Cake Labs distribution. Windows x64 EXE/ZIP; Linux x64 DEB/TAR/AppImage.\n\n' >> release-notes.md
+          gh api "repos/$repo/contents/docs/audits/CAKE_PC_XMR_STABILITY_20261109.md?ref=$EXPECTED_SOURCE" --jq .content | base64 --decode >> release-notes.md
+          printf '\n\nSource: `%s`\nFull validation: https://github.com/%s/actions/runs/%s\n\nLinux baseline: glibc >= 2.39, libstdc++ >= 13.2, GTK3 and a working Secret Service. Ubuntu 22.04/ARM/musl are not supported. Cross-distro containers do not validate every GPU/Wayland/FUSE desktop or physical hardware wallet. Windows installer is unsigned.\n' "$EXPECTED_SOURCE" "$repo" "$BUILD_RUN" >> release-notes.md
+          gh release create "$tag" --repo "$repo" --target "$EXPECTED_SOURCE" --draft --prerelease --title "Cake Wallet PC 6.5.3 — Monero stability — Windows + Linux — $PC_BUILD" --notes-file release-notes.md
+          gh release upload "$tag" dist/*-Setup.exe dist/*.zip dist/*.deb dist/*.tar.gz dist/*.AppImage dist/SHA256SUMS.txt VALIDATION.json --repo "$repo"
+          gh release edit "$tag" --draft=false --repo "$repo"
+          gh release view "$tag" --repo "$repo" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
