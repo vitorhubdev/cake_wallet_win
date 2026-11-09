@@ -1,0 +1,29 @@
+name: Validate exact PC 6.5.3 candidate
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-v653-candidate-validate.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify immutable source and dispatch its full non-release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=vitorhubdev/cake_wallet_win
+          branch=pc-v6.5.3-linux-candidate-20261108
+          sha=$(gh api "repos/$repo/git/ref/heads/$branch" --jq .object.sha)
+          test "$sha" = d4d1a09fb970cb65978bad6c10727fc1322704be
+          tree=$(gh api "repos/$repo/git/commits/$sha" --jq .tree.sha)
+          test "$tree" = 125e6eaa1ef10240116ee7048763ff68db7b0fc8
+          count=$(gh api "repos/$repo/actions/workflows/pc-release.yml/runs?head_sha=$sha&per_page=1" --jq .total_count)
+          if [ "$count" = 0 ]; then
+            gh workflow run pc-release.yml --ref "$branch" --repo "$repo"
+          fi
+          printf 'Verified candidate `%s`, tree `%s`. Full desktop CI requested; release publication is disabled on this non-main branch.\n' "$sha" "$tree" >> "$GITHUB_STEP_SUMMARY"
