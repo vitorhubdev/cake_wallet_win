@@ -1,0 +1,49 @@
+name: Repair unused v6.5.3 package references
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-v653-dependency-repair.yml]
+permissions:
+  contents: write
+  actions: write
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: pc-v6.5.3-linux-candidate-20261108
+          persist-credentials: true
+      - name: Apply narrow upstream unused dependency repair
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = d4d1a09fb970cb65978bad6c10727fc1322704be
+          python3 - <<'PY'
+          import pathlib,re,subprocess
+          matches=subprocess.run(['git','grep','-n','-E','package:(solana|borsh_annotation)/','--','*.dart'],capture_output=True)
+          assert matches.returncode==1, 'Dependency is imported; review required'
+          p=pathlib.Path('pubspec_base.yaml');text=p.read_text()
+          assert text.count('  solana: ^0.31.0+1\n')==1
+          p.write_text(text.replace('  solana: ^0.31.0+1\n',''))
+          for file in ['pubspec_overrides.yaml','pubspec.lock']:
+              p=pathlib.Path(file);text=p.read_text()
+              for package in ['solana','borsh_annotation']:
+                  pattern=r'(?ms)^  '+package+r':\n.*?(?=^  \S|\Z)'
+                  match=re.search(pattern,text)
+                  assert match and 'espresso-cash/espresso-cash-public' in match[0]
+                  text,count=re.subn(pattern,'',text)
+                  assert count==1
+              p.write_text(text)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pubspec_base.yaml pubspec_overrides.yaml pubspec.lock
+          git commit -m 'Fix v6.5.3 clean builds by removing unused inaccessible Solana package refs' -m 'Narrow backport of upstream 15d591f1bccdd3f61823570aece3379234e218bf (#3814). The cw_solana on_chain backend is retained. No signing or RPC implementation is replaced.'
+          git push origin HEAD:refs/heads/pc-v6.5.3-linux-candidate-20261108
+          git rev-parse HEAD >> "$GITHUB_STEP_SUMMARY"
+      - name: Rerun complete non-publishing candidate validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pc-release.yml --ref pc-v6.5.3-linux-candidate-20261108 --repo vitorhubdev/cake_wallet_win
