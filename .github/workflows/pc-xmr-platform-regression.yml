@@ -1,0 +1,54 @@
+name: Monero socket and TLS regression across desktops
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-xmr-platform-regression.yml]
+permissions:
+  contents: read
+jobs:
+  sockets:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: db9f29dafe6393cfed3e64da8133f709c63864c5
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Verify actual HTTP and refusal classification
+        shell: bash
+        run: dart tool/pc_monero_health_checks.dart
+      - name: Prepare isolated pinned diagnostic dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil
+          destination=Path(os.environ['RUNNER_TEMP'])/'pc-proxy-checks'
+          (destination/'cw_core/lib/utils').mkdir(parents=True)
+          (destination/'tool').mkdir()
+          for name in ['cw_core/lib/monero_node_health.dart','cw_core/lib/utils/monero_probe_request.dart','cw_core/lib/utils/monero_probe_transport.dart','tool/pc_monero_proxy_checks.dart']:
+              shutil.copy2(name,destination/name)
+          (destination/'pubspec.yaml').write_text("name: pc_diagnostic_platform_check\npublish_to: none\nenvironment:\n  sdk: '>=3.10.0 <4.0.0'\ndependencies:\n  crypto: ^3.0.0\n  socks5_proxy:\n    git:\n      url: https://github.com/LacticWhale/socks_dart.git\n      ref: 27ad7c2efae8d7460325c74b90f660085cbd0685\n")
+          PY
+          cd "$RUNNER_TEMP/pc-proxy-checks"
+          dart pub get
+          dart analyze cw_core tool
+      - name: Exercise SOCKS and TLS cancellation with a local test certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/pc-proxy-checks"
+          # Git Bash otherwise rewrites /CN=localhost into a Windows path.
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout key.pem -out cert.pem -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' >/dev/null
+          dart tool/pc_monero_proxy_checks.dart cert.pem key.pem
