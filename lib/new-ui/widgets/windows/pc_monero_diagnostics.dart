@@ -71,14 +71,13 @@ class _PcMoneroDiagnosticsState extends State<PcMoneroDiagnostics> {
     if (current == null || _testing || _cooldownSeconds > 0) return;
     final generation = ++_generation;
     final identity = current.healthIdentity;
-    final snapshot = Node.fromMap(current.toMap());
     final cancellation = MoneroProbeCancellation();
     _cancellation = cancellation;
     setState(() {
       _testing = true;
       _health = null;
     });
-    final result = await snapshot.probeMoneroHealth(
+    final result = await current.probeMoneroHealth(
       expectedNetwork: widget.testnet ? 'testnet' : 'mainnet',
       cancellation: cancellation,
     );
