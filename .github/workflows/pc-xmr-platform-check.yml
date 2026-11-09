@@ -1,0 +1,84 @@
+name: Verify Monero diagnostics on both desktop platforms
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-xmr-platform-check.yml]
+permissions:
+  contents: read
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: pc-xmr-stability-20261109
+          persist-credentials: true
+      - name: Recognize both Winsock and Win32 refused-connection codes
+        id: source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = c95d39d77f3b69115387ddc3d52de79a3fd797b8
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('cw_core/lib/monero_node_health.dart');s=p.read_text()
+          old='{111, 61, 10061}.contains(code)'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,'{111, 61, 1225, 10061}.contains(code)'))
+          p=Path('tool/pc_monero_health_checks.dart');s=p.read_text()
+          old="'Refused TCP classified without claiming an IP ban'"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"'Refused TCP classified without claiming an IP ban: ${refused.state}'"))
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cw_core/lib/monero_node_health.dart tool/pc_monero_health_checks.dart
+          git commit -m 'Classify Win32 ERROR_CONNECTION_REFUSED 1225 as refused TCP alongside Winsock 10061' -m 'Keep the real closed-loopback-port regression mandatory. Microsoft WinError.h documents 1225; no error is converted into an IP-ban claim.'
+          git push --atomic origin HEAD:refs/heads/pc-xmr-stability-20261109 HEAD:refs/heads/pc-v6.5.3-linux-candidate-20261108
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  sockets:
+    needs: patch
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.patch.outputs.commit }}
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - name: Run real HTTP classification, deadlines, rate and submission regressions
+        shell: bash
+        run: dart tool/pc_monero_health_checks.dart
+      - name: Run exact diagnostic sources with pinned SOCKS dependency in isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil
+          destination=Path(os.environ['RUNNER_TEMP'])/'pc-proxy-checks'
+          (destination/'cw_core/lib/utils').mkdir(parents=True)
+          (destination/'tool').mkdir()
+          for name in ['cw_core/lib/monero_node_health.dart','cw_core/lib/utils/monero_probe_request.dart','cw_core/lib/utils/monero_probe_transport.dart','tool/pc_monero_proxy_checks.dart']:
+              shutil.copy2(name,destination/name)
+          (destination/'pubspec.yaml').write_text("name: pc_diagnostic_platform_check\npublish_to: none\nenvironment:\n  sdk: '>=3.10.0 <4.0.0'\ndependencies:\n  crypto: ^3.0.0\n  socks5_proxy:\n    git:\n      url: https://github.com/LacticWhale/socks_dart.git\n      ref: 27ad7c2efae8d7460325c74b90f660085cbd0685\n")
+          PY
+          cd "$RUNNER_TEMP/pc-proxy-checks"
+          dart pub get
+          dart analyze cw_core tool
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout key.pem -out cert.pem -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' >/dev/null 2>&1
+          dart tool/pc_monero_proxy_checks.dart cert.pem key.pem
