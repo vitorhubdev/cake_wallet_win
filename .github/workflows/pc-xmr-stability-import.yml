@@ -1,0 +1,44 @@
+name: Import reviewed Monero desktop stability source
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-xmr-stability-import.yml]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: pc-v6.5.3-linux-candidate-20261108
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Verify and import exact public source bundle
+        env:
+          BUNDLE_URL: https://infringement-bryan-cheers-huge.trycloudflare.com/6ee3fc5379dc806806bdd847e0367311a653efd9c54b27c8/candidate.bundle
+        run: |
+          set -euo pipefail
+          current=$(git rev-parse HEAD)
+          if [ "$current" = 373e326c74d74ad4e7b90fda135a72fde6fffe58 ]; then
+            curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 60 "$BUNDLE_URL" -o "$RUNNER_TEMP/candidate.bundle"
+            test "$(stat -c %s "$RUNNER_TEMP/candidate.bundle")" = 40927
+            echo "e9fa25494391d82295fb0e514b49bf2af3e5ca6567a7a2c0a09628a4090f6414  $RUNNER_TEMP/candidate.bundle" | sha256sum --check -
+            git bundle verify "$RUNNER_TEMP/candidate.bundle"
+            git fetch "$RUNNER_TEMP/candidate.bundle" refs/heads/pc-xmr-stability-20261109
+            git checkout --detach FETCH_HEAD
+          fi
+          test "$(git rev-parse HEAD)" = 6c4ef7ad43af21e2fc5156489a7743544f9c879b
+          test "$(git rev-parse 'HEAD^{tree}')" = 2039621807ebc4b58d5782475abd34501750fbb2
+          test "$(git show -s --format=%P HEAD)" = 373e326c74d74ad4e7b90fda135a72fde6fffe58
+          git diff --check HEAD^
+          git diff --exit-code HEAD^ -- .github
+          git push origin HEAD:refs/heads/pc-v6.5.3-linux-candidate-20261108
+          printf 'Source `%s`, tree `%s`. Imported only; no release or main mutation.\n' "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pc-xmr-stability-source-evidence
+          path: docs/audits/CAKE_PC_XMR_*
+          retention-days: 30
+          if-no-files-found: error
