@@ -30,7 +30,7 @@ jobs:
             state=$(gh api "repos/$repo/actions/runs/$obsolete" --jq .status)
             if [ "$state" != completed ]; then gh run cancel "$obsolete" --repo "$repo"; fi
           done
-          gh run watch 42724005516 --repo "$repo" --exit-status --interval 20 > /tmp/diagnostic-checks.log
+          gh run watch 42724570406 --repo "$repo" --exit-status --interval 20 > /tmp/diagnostic-checks.log
           # This older source is not released. Its already-resolved cache avoids
           # repeating a large cold checkout when the verified source is rebuilt.
           for i in $(seq 1 90); do
