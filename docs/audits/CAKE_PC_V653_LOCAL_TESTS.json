@@ -1,0 +1,70 @@
+{
+  "recordedAtUtc": "2026-11-08T23:57:57.836962+00:00",
+  "platform": "Ubuntu 26.10 x86-64; isolated workspace; no real wallets",
+  "dart": "3.13.7",
+  "forkBase": "1022d5751ca5813fbf6c8643ac775d789faf24d0",
+  "upstream": "d803aecf9de21461c7459c974ce5e3f2d92b70ed",
+  "transport": {
+    "status": "passed",
+    "checks": 10,
+    "cases": [
+      "IPv4 fallback occurs before request transmission",
+      "Working native IPv6 is preferred",
+      "Cancellation during DNS cannot open a late socket",
+      "DNS wait has a finite deadline",
+      "A POST accepted then disconnected is not replayed",
+      "Response timeout has no duplicate POST",
+      "Explicit proxy destination is respected",
+      "TLS verifies the original hostname after IP selection",
+      "An untrusted certificate is rejected before POST transmission",
+      "A trusted certificate for the wrong hostname is rejected"
+    ],
+    "externalRpcRequests": 0,
+    "paymentsSubmitted": 0
+  },
+  "stability": {
+    "status": "passed",
+    "checks": 27,
+    "networkOperations": false
+  },
+  "seedCompatibility": {
+    "status": "passed",
+    "seedCompatibilityVectors": 52,
+    "source": "upstream fixed legacy vectors",
+    "fundedWallets": false
+  },
+  "packagingUnitTests": {
+    "status": "passed",
+    "tests": 10,
+    "scope": "synthetic filesystem fixtures"
+  },
+  "nativeProfile": {
+    "status": "passed",
+    "scope": "compiled native profile lock/exclusion/Unicode/invalid-path/symlink tests"
+  },
+  "appimageToolchain": {
+    "status": "passed",
+    "scope": "synthetic AppImage pack and extract-and-run; not wallet binary"
+  },
+  "resolvedBitBoxPin": "3d1c607f14c6d5bace2971ec4c10b5201053cc56",
+  "notEstablished": [
+    "full Flutter build",
+    "new Windows/Linux wallet installers",
+    "Arch/Fedora/Ubuntu cross-distro runtime matrix",
+    "Wayland/GPU/FUSE desktop behavior",
+    "mainnet transfers",
+    "hardware wallets"
+  ],
+  "agentsExecuted": 0,
+  "reviewWorkstreams": 20,
+  "workflowLint": {
+    "tool": "actionlint v1.7.12",
+    "status": "passed",
+    "scope": [
+      "pc-release.yml",
+      "pc-linux-runtime.yml"
+    ],
+    "shellcheck": false,
+    "pyflakes": false
+  }
+}

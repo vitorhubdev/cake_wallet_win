@@ -2,7 +2,7 @@
 ; stable across releases. Only installed application files are uninstalled;
 ; wallet data in AppData is deliberately outside this script's file entries.
 #ifndef MyAppVersion
-  #define MyAppVersion "6.5.2"
+  #define MyAppVersion "6.5.3"
 #endif
 #ifndef MyBuildNumber
   #define MyBuildNumber "1"

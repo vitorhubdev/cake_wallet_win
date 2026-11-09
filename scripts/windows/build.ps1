@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '6.5.2',
+    [string]$Version = '6.5.3',
     [int]$BuildNumber = 1,
     [switch]$SkipPrepare,
     [ValidateSet('All', 'Configure', 'Generate', 'Build')]
@@ -60,6 +60,7 @@ try {
         $pubspec = (Get-Content pubspec.yaml -Raw) -replace '(?m)^version: 0\.0\.0\r?$', "version: $Version+$BuildNumber"
         [IO.File]::WriteAllText((Join-Path $root 'pubspec.yaml'), $pubspec)
         flutter pub get
+        python scripts/windows/prepare_dependencies.py --verify-resolved
         dart run tool/configure_windows_secrets.dart
 
         # Generate the MWEB ABI from the same header that produced mweb.dll.
@@ -96,7 +97,15 @@ try {
             test/reactions/check_connection_test.dart `
             test/core/pc_node_display_address_test.dart `
             test/core/monero_node_probe_test.dart `
+            test/core/auth_pin_unreadable_test.dart `
+            test/entities/wallet_contact_test.dart `
             test/evm --reporter expanded
+        Push-Location cw_core
+        try { flutter test test/amount test/bip39_seed_test.dart test/proxy_wrapper_prefer_ipv6_test.dart test/pc_post_no_replay_test.dart --reporter expanded } finally { Pop-Location }
+        Push-Location cw_bitcoin
+        try { flutter test test/address_index_test.dart test/electrum_client_connect_test.dart test/electrum_wallet_connection_test.dart test/unknown_derivation_test.dart test/bitcoin_wallet_addresses_picker_test.dart --reporter expanded } finally { Pop-Location }
+        Push-Location cw_nano
+        try { flutter test test/hd_seed_test.dart --reporter expanded } finally { Pop-Location }
     }
 
     if ($Stage -in @('All', 'Build')) {
@@ -131,8 +140,8 @@ try {
             repository = 'vitorhubdev/cake_wallet_win'
             commit = (& git rev-parse HEAD)
             version = "$Version+$BuildNumber"
-            upstreamVersion = '6.5.2'
-            upstreamCommit = '4f792ca4a9981961bdc368ad34ba4c8d40c928b1'
+            upstreamVersion = '6.5.3'
+            upstreamCommit = 'd803aecf9de21461c7459c974ce5e3f2d92b70ed'
             flutter = (& flutter --version --machine | ConvertFrom-Json)
             configuration = 'Windows x64 community build; no Cake production API keys'
         }

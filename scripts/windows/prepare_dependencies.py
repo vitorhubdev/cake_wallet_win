@@ -30,7 +30,7 @@ DEPENDENCIES = {
         "d6e907924124d81c6e71647255b42da5693dcfa2ccf0c2553761e648171601c0",
     ),
 }
-BITBOX_COMMIT = "5a6e6dd388ef64003f86094af80d5453518b601d"
+BITBOX_COMMIT = "3d1c607f14c6d5bace2971ec4c10b5201053cc56"
 MONERO_COMMIT = "33671871de3d51696b66ffb3bd94f744e26974f6"
 
 
@@ -114,6 +114,20 @@ def verify_monero() -> dict:
     return monero_metadata
 
 
+def verify_resolved_pins() -> None:
+    """Verify the dependency Pub actually resolved, not just requested metadata."""
+    lock = (ROOT / "pubspec.lock").read_text(encoding="utf-8")
+    match = re.search(r"(?ms)^  bitbox_flutter:\n(.*?)(?=^  \S|\Z)", lock)
+    if match is None:
+        raise ValueError("BitBox is absent from the resolved package lock")
+    block = match.group(1)
+    if ("source: git" not in block or
+        "https://github.com/cake-tech/bitbox_flutter.git" not in block or
+        re.search(r"(?m)^      resolved-ref: [\"']?" + BITBOX_COMMIT + r"[\"']?\s*$", block) is None):
+        raise ValueError("Resolved BitBox revision differs from the reviewed source")
+    print("Verified resolved BitBox Git source and exact revision", flush=True)
+
+
 def main(*, sources_only: bool = False, platform: str = "windows") -> None:
     # CI prepares Dart packages while the independent native job is compiling.
     # build.ps1 always verifies the completed artifact again before compilation.
@@ -124,12 +138,14 @@ def main(*, sources_only: bool = False, platform: str = "windows") -> None:
         metadata[name] = {"url": url, "sha256": digest}
         extract_sources(archive, ROOT / "scripts" / name)
 
-    bitbox = ROOT / "scripts/bitbox_flutter"
-    if not (bitbox / ".git").exists():
-        subprocess.run(["git", "clone", "--no-checkout", "https://github.com/konstantinullrich/bitbox_flutter", str(bitbox)], check=True, timeout=300)
-    subprocess.run(["git", "-C", str(bitbox), "fetch", "origin", BITBOX_COMMIT], check=True, timeout=300)
-    subprocess.run(["git", "-C", str(bitbox), "checkout", "--detach", BITBOX_COMMIT], check=True, timeout=120)
-    metadata["bitbox_flutter"] = {"repository": "https://github.com/konstantinullrich/bitbox_flutter", "commit": BITBOX_COMMIT}
+    bitbox_repository = "https://github.com/cake-tech/bitbox_flutter.git"
+    for spec in ("pubspec_base.yaml", "cw_bitcoin/pubspec.yaml", "cw_evm/pubspec.yaml"):
+        content = (ROOT / spec).read_text(encoding="utf-8")
+        expected = "  bitbox_flutter:\n    git:\n      url: " + bitbox_repository + "\n      ref: " + BITBOX_COMMIT
+        if expected not in content:
+            raise ValueError("Unexpected upstream BitBox package pin: " + spec)
+    metadata["bitbox_flutter"] = {"repository": bitbox_repository, "commit": BITBOX_COMMIT,
+                                  "resolution": "pinned Git package; verified again in resolved lockfile"}
 
     # Git checkout on Windows can materialize symlinks as tiny text files.
     # All cw packages must see the same upstream dependency pins.
@@ -172,8 +188,11 @@ if __name__ == "__main__":
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--sources-only", action="store_true", help="Prepare package sources while the native Monero job runs")
     modes.add_argument("--verify-monero", action="store_true", help="Verify the native artifact and record it in the dependency manifest")
+    modes.add_argument("--verify-resolved", action="store_true", help="Verify package-lock source and native API pin")
     args = parser.parse_args()
-    if args.verify_monero:
+    if args.verify_resolved:
+        verify_resolved_pins()
+    elif args.verify_monero:
         native_metadata = verify_monero() if args.platform == "windows" else verify_linux_monero()
         manifest = ROOT / f"build/{args.platform}-native/dependency-manifest.json"
         metadata = json.loads(manifest.read_text(encoding="utf-8"))

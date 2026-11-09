@@ -1,0 +1,818 @@
+{
+  "forkBase": "1022d5751ca5813fbf6c8643ac775d789faf24d0",
+  "upstream": "d803aecf9de21461c7459c974ce5e3f2d92b70ed",
+  "commits": [
+    {
+      "sha": "e0d2ba25a04262e70b3916f05f7b9cfe46c32f6f",
+      "subject": "fix: zip slip in backup (#3710)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Protege a extração de backup contra caminhos que escapem do destino (Zip Slip).",
+      "changedFiles": [
+        "lib/core/backup_service.dart",
+        "lib/core/backup_service_v3.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/e0d2ba25a04262e70b3916f05f7b9cfe46c32f6f"
+    },
+    {
+      "sha": "160d710ac7b4709cfb941c6d8fa425dba41da120",
+      "subject": "26-09-28_Update Translation_de_DE (#3663)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Atualiza traduções alemãs.",
+      "changedFiles": [
+        "res/values/strings_de.arb"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/160d710ac7b4709cfb941c6d8fa425dba41da120"
+    },
+    {
+      "sha": "d4739e47aa98a8b361f7e1d09954ed8926c65633",
+      "subject": "update translation :3",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Atualiza traduções.",
+      "changedFiles": [
+        "res/values/strings_ar.arb",
+        "res/values/strings_bg.arb",
+        "res/values/strings_cs.arb",
+        "res/values/strings_de.arb",
+        "res/values/strings_es.arb",
+        "res/values/strings_fa.arb",
+        "res/values/strings_fr.arb",
+        "res/values/strings_gn.arb",
+        "res/values/strings_ha.arb",
+        "res/values/strings_hi.arb",
+        "res/values/strings_hr.arb",
+        "res/values/strings_hy.arb",
+        "res/values/strings_id.arb",
+        "res/values/strings_it.arb",
+        "res/values/strings_ja.arb",
+        "res/values/strings_ko.arb",
+        "res/values/strings_my.arb",
+        "res/values/strings_nl.arb",
+        "res/values/strings_pl.arb",
+        "res/values/strings_pt.arb",
+        "res/values/strings_pt_BR.arb",
+        "res/values/strings_ru.arb",
+        "res/values/strings_th.arb",
+        "res/values/strings_tl.arb",
+        "res/values/strings_tr.arb",
+        "res/values/strings_uk.arb",
+        "res/values/strings_ur.arb",
+        "res/values/strings_vi.arb",
+        "res/values/strings_yo.arb",
+        "res/values/strings_zh.arb"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/d4739e47aa98a8b361f7e1d09954ed8926c65633"
+    },
+    {
+      "sha": "c579e50e416945bbaea521540dc4605ab431960b",
+      "subject": "clearer error when restoring unavailable wallet from qr (#3743)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Mostra erro mais claro para QR de carteira sem backend disponível.",
+      "changedFiles": [
+        "lib/view_model/restore/wallet_restore_from_qr_code.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/c579e50e416945bbaea521540dc4605ab431960b"
+    },
+    {
+      "sha": "75fa89615ea98c7423d228e3a43d5493febffe65",
+      "subject": "CW-1509: Add BTCMap.org to apps (#3715)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Inclui BTCMap na lista de aplicativos; não altera o processamento de pagamentos.",
+      "changedFiles": [
+        "assets/images/btcmap.png",
+        "lib/src/screens/dashboard/pages/cake_features_page.dart",
+        "res/values/strings_ar.arb",
+        "res/values/strings_bg.arb",
+        "res/values/strings_cs.arb",
+        "res/values/strings_de.arb",
+        "res/values/strings_en.arb",
+        "res/values/strings_es.arb",
+        "res/values/strings_fa.arb",
+        "res/values/strings_fr.arb",
+        "res/values/strings_gn.arb",
+        "res/values/strings_ha.arb",
+        "res/values/strings_hi.arb",
+        "res/values/strings_hr.arb",
+        "res/values/strings_hy.arb",
+        "res/values/strings_id.arb",
+        "res/values/strings_it.arb",
+        "res/values/strings_ja.arb",
+        "res/values/strings_ko.arb",
+        "res/values/strings_my.arb",
+        "res/values/strings_nl.arb",
+        "res/values/strings_pl.arb",
+        "res/values/strings_pt.arb",
+        "res/values/strings_pt_BR.arb",
+        "res/values/strings_ru.arb",
+        "res/values/strings_th.arb",
+        "res/values/strings_tl.arb",
+        "res/values/strings_tr.arb",
+        "res/values/strings_uk.arb",
+        "res/values/strings_ur.arb",
+        "res/values/strings_vi.arb",
+        "res/values/strings_yo.arb",
+        "res/values/strings_zh.arb"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/75fa89615ea98c7423d228e3a43d5493febffe65"
+    },
+    {
+      "sha": "5aec35b40bacdd63870ca70f886c0a2e11bffb72",
+      "subject": "fix: make the wallet-access 2FA step non-dismissable (CW-1711) (#3742)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Impede dispensar a etapa de 2FA necessária para acessar a carteira.",
+      "changedFiles": [
+        "lib/src/screens/setup_2fa/setup_2fa_enter_code_page.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/5aec35b40bacdd63870ca70f886c0a2e11bffb72"
+    },
+    {
+      "sha": "970e47a57fbda88c2f3f0988881e8feeb2d4e0a0",
+      "subject": "make model_generator less annoying (#3745)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Ajusta o script de geração de modelos.",
+      "changedFiles": [
+        "model_generator.sh"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/970e47a57fbda88c2f3f0988881e8feeb2d4e0a0"
+    },
+    {
+      "sha": "aaaea05e15bd0ee07032dce3557eedbc21c96eba",
+      "subject": "Wallet picker follow-ups to #3717 (#3729)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Melhora o seletor de carteiras e seus casos de interface.",
+      "changedFiles": [
+        "cw_bitcoin/lib/bitcoin_wallet_addresses.dart",
+        "cw_bitcoin/lib/litecoin_wallet_addresses.dart",
+        "cw_bitcoin/test/bitcoin_wallet_addresses_picker_test.dart",
+        "lib/entities/wallet_contact.dart",
+        "lib/src/screens/contact/contact_list_page.dart",
+        "lib/view_model/contact_list/contact_list_view_model.dart",
+        "test/entities/wallet_contact_test.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/aaaea05e15bd0ee07032dce3557eedbc21c96eba"
+    },
+    {
+      "sha": "75eee6ba75e24c5980a28f0513e3146418d99e97",
+      "subject": "Rename Moonpay Cash App payment method to Cash App Pay (#3748)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Renomeia a opção Cash App Pay no provedor MoonPay.",
+      "changedFiles": [
+        "lib/buy/payment_method.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/75eee6ba75e24c5980a28f0513e3146418d99e97"
+    },
+    {
+      "sha": "2caafc677d97f322eb9c5f5d9cd6fcd1f347346a",
+      "subject": "miscellaneous",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Ajustes diversos de interface/modelos; ver lista completa de arquivos no inventário JSON.",
+      "changedFiles": [
+        ".gitignore",
+        "README.md",
+        "cw_core/lib/lnurl.dart",
+        "docs/VERIFY.md"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/2caafc677d97f322eb9c5f5d9cd6fcd1f347346a"
+    },
+    {
+      "sha": "49b4898865f9d5669ff451823d7d85dfb9b30c7f",
+      "subject": "feat: add unit tests CI workflow (#3640)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Adiciona workflow de testes unitários upstream; não substitui os gates desktop do fork.",
+      "changedFiles": [
+        ".github/workflows/pr_test_build_linux.yml",
+        "cw_nano/.gitignore",
+        "lib/entities/new_ui_entities/list_item/list_item_regular_row.dart",
+        "lib/new-ui/pages/settings_page.dart",
+        "lib/src/widgets/new_list_row/list_item_regular_row_widget.dart",
+        "lib/src/widgets/new_list_row/new_list_section.dart",
+        "test/core/address_validator_test.dart",
+        "test/core/lightning_invoice_service_test.dart",
+        "test/new-ui/widgets/coins_page/top_bar_widget/top_bar_test.dart",
+        "test/new-ui/widgets/coins_page/wallet_info_test.dart",
+        "test/new-ui/widgets/money/money_text_test.dart",
+        "tool/import_secrets_config.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/49b4898865f9d5669ff451823d7d85dfb9b30c7f"
+    },
+    {
+      "sha": "03f27548bbfc13686c4d96526cd21e7803a4529a",
+      "subject": "fix: convert decoded JSON list instead of casting in solana_signAllTransactions (#3671)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Converte corretamente a lista JSON de solana_signAllTransactions.",
+      "changedFiles": [
+        "lib/src/screens/wallet_connect/services/chain_service/solana/solana_chain_service.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/03f27548bbfc13686c4d96526cd21e7803a4529a"
+    },
+    {
+      "sha": "ec6fd6a8635a10d662280958f2997179487144f0",
+      "subject": "fix: restore LNURL.getPayRequestAmount signature (dev compile break) (#3753)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Restaura a assinatura de LNURL.getPayRequestAmount e corrige compilação.",
+      "changedFiles": [
+        "cw_core/lib/lnurl.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/ec6fd6a8635a10d662280958f2997179487144f0"
+    },
+    {
+      "sha": "1772b7624cb10c077d362f0fdf9cf2fd571714ee",
+      "subject": "Strip EVM chain id from QR scanned into swap receive address (#3756)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Remove chainId EVM do QR ao interpretar endereço de recebimento de swap.",
+      "changedFiles": [
+        "lib/new-ui/widgets/swap_page/swap_amount_box.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/1772b7624cb10c077d362f0fdf9cf2fd571714ee"
+    },
+    {
+      "sha": "0fe6dde265ec0ff0f4bc582d137cc38e2647116c",
+      "subject": "add extra checks to verify that the returned transaction for an RBF, matches the original one",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Verifica se a transação retornada para RBF corresponde à original.",
+      "changedFiles": [
+        "cw_bitcoin/lib/electrum_wallet.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/0fe6dde265ec0ff0f4bc582d137cc38e2647116c"
+    },
+    {
+      "sha": "98fa3e444c3fe4a658a1ef59c31d10706a4927e6",
+      "subject": "add arbitrum to moonpay",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Adiciona Arbitrum à integração MoonPay; depende do provedor externo.",
+      "changedFiles": [
+        "lib/buy/moonpay/moonpay_provider.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/98fa3e444c3fe4a658a1ef59c31d10706a4927e6"
+    },
+    {
+      "sha": "f1c558cf18fd747d6b756bfd562f3e95d8ad3764",
+      "subject": "fix: handle concurrent share requests on iOS",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Trata compartilhamentos simultâneos no iOS; fora dos binários PC.",
+      "changedFiles": [
+        "lib/utils/share_util.dart",
+        "test/utils/share_util_test.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/f1c558cf18fd747d6b756bfd562f3e95d8ad3764"
+    },
+    {
+      "sha": "162a688d103a4f956ec0738f656f53df097db6dd",
+      "subject": "Await Monero wallet close before deleting its files (#3757)",
+      "alreadyInFork": true,
+      "assessmentPtBr": "Aguarda fechamento nativo Monero antes de apagar arquivos em fluxo de remoção.",
+      "changedFiles": [
+        "cw_monero/lib/monero_wallet_service.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/162a688d103a4f956ec0738f656f53df097db6dd"
+    },
+    {
+      "sha": "9488b5447208cd95ae4756bd1cae6744773214a8",
+      "subject": "ios ci (#3632)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Expande CI/build de iOS; preservado como histórico, não é suporte PC.",
+      "changedFiles": [
+        ".github/workflows/pr_test_build_ios.yml",
+        "ios/Runner/AppDelegate.swift",
+        "lib/new-ui/new_dashboard.dart",
+        "scripts/android/docker/Dockerfile.reown",
+        "scripts/android/docker/build.sh",
+        "scripts/build_bitbox_flutter.sh",
+        "scripts/ios/build_monero_all.sh",
+        "scripts/ios/build_mwebd.sh",
+        "scripts/ios/build_torch.sh",
+        "scripts/ios/docker/Dockerfile.base",
+        "scripts/ios/docker/Dockerfile.monero",
+        "scripts/ios/docker/Dockerfile.torch",
+        "scripts/ios/docker/build.sh",
+        "scripts/ios/gen_framework.sh",
+        "scripts/linux/docker/Dockerfile.reown",
+        "scripts/linux/docker/build.sh",
+        "scripts/prepare_reown.sh",
+        "scripts/prepare_torch.sh",
+        "tool/download_moneroc_prebuilds.dart",
+        "tool/set_testflight_changelog.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/9488b5447208cd95ae4756bd1cae6744773214a8"
+    },
+    {
+      "sha": "e2c555155bab01dc578efbfb7873a85687d6aaa2",
+      "subject": "Improve wallet open speed (#3719)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Acelera derivação BIP39/abertura, preservando os resultados históricos da derivação.",
+      "changedFiles": [
+        "cw_bitcoin/lib/bitcoin_mnemonics_bip39.dart",
+        "cw_bitcoin/lib/bitcoin_wallet.dart",
+        "cw_bitcoin/lib/electrum_derivations.dart",
+        "cw_bitcoin/lib/electrum_wallet.dart",
+        "cw_bitcoin/lib/electrum_wallet_addresses.dart",
+        "cw_bitcoin/lib/litecoin_wallet.dart",
+        "cw_bitcoin/lib/litecoin_wallet_addresses.dart",
+        "cw_core/lib/utils/bip39_seed.dart",
+        "cw_core/test/bip39_seed_test.dart",
+        "cw_evm/lib/evm_chain_wallet.dart",
+        "cw_monero/lib/bip39_seed.dart",
+        "cw_solana/lib/solana_wallet.dart",
+        "cw_tron/lib/tron_wallet.dart",
+        "cw_zano/lib/bip39_seed.dart",
+        "lib/bitcoin/cw_bitcoin.dart",
+        "tool/configure.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/e2c555155bab01dc578efbfb7873a85687d6aaa2"
+    },
+    {
+      "sha": "de159ddb479aff0e67fda2081a68f1c4a944077f",
+      "subject": "CW-1400-add-zcash-support-to-ledger (#3699)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Adiciona Zcash a Ledger; o backend Zcash continua desabilitado no perfil PC.",
+      "changedFiles": [
+        "cw_core/lib/get_height_by_date_zec.dart",
+        "cw_core/lib/hardware/device_connection_type.dart",
+        "cw_monero/lib/ledger.dart",
+        "cw_zcash/lib/src/hardware/zcash_hardware_wallet_service.dart",
+        "cw_zcash/lib/src/hardware/zcash_ledger_service.dart",
+        "cw_zcash/lib/src/models.dart",
+        "cw_zcash/lib/src/pending_zcash_transaction.dart",
+        "cw_zcash/lib/src/zcash_taddress_rotation.dart",
+        "cw_zcash/lib/src/zcash_wallet.dart",
+        "cw_zcash/lib/src/zcash_wallet_service.dart",
+        "cw_zcash/pubspec.yaml",
+        "lib/buy/dfx/dfx_buy_provider.dart",
+        "lib/buy/robinhood/robinhood_buy_provider.dart",
+        "lib/new-ui/widgets/coins_page/unconfirmed_balance_widget.dart",
+        "lib/new-ui/widgets/coins_page/zcash_manual_shield_modal.dart",
+        "lib/new-ui/widgets/hardware_wallet/sync_key_images_sheet.dart",
+        "lib/new-ui/widgets/swap_page/swap_confirm_sheet.dart",
+        "lib/router.dart",
+        "lib/src/screens/connect_device/hardware_wallet_account_options_page.dart",
+        "lib/src/screens/connect_device/monero_hardware_wallet_options_page.dart",
+        "lib/src/screens/integrations/deuro/savings_page.dart",
+        "lib/src/screens/new_wallet/new_wallet_type_page.dart",
+        "lib/view_model/dashboard/dashboard_view_model.dart",
+        "lib/view_model/hardware_wallet/hardware_wallet_view_model.dart",
+        "lib/view_model/hardware_wallet/ledger_view_model.dart",
+        "lib/view_model/hardware_wallet/trezor_connect_view_model.dart",
+        "lib/view_model/wallet_hardware_restore_view_model.dart",
+        "lib/zcash/cw_zcash.dart",
+        "pubspec.lock",
+        "pubspec_overrides.yaml",
+        "res/values/strings_ar.arb",
+        "res/values/strings_bg.arb",
+        "res/values/strings_cs.arb",
+        "res/values/strings_de.arb",
+        "res/values/strings_en.arb",
+        "res/values/strings_es.arb",
+        "res/values/strings_fa.arb",
+        "res/values/strings_fr.arb",
+        "res/values/strings_gn.arb",
+        "res/values/strings_ha.arb",
+        "res/values/strings_hi.arb",
+        "res/values/strings_hr.arb",
+        "res/values/strings_hy.arb",
+        "res/values/strings_id.arb",
+        "res/values/strings_it.arb",
+        "res/values/strings_ja.arb",
+        "res/values/strings_ko.arb",
+        "res/values/strings_my.arb",
+        "res/values/strings_nl.arb",
+        "res/values/strings_pl.arb",
+        "res/values/strings_pt.arb",
+        "res/values/strings_pt_BR.arb",
+        "res/values/strings_ru.arb",
+        "res/values/strings_th.arb",
+        "res/values/strings_tl.arb",
+        "res/values/strings_tr.arb",
+        "res/values/strings_uk.arb",
+        "res/values/strings_ur.arb",
+        "res/values/strings_vi.arb",
+        "res/values/strings_yo.arb",
+        "res/values/strings_zh.arb",
+        "tool/configure.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/de159ddb479aff0e67fda2081a68f1c4a944077f"
+    },
+    {
+      "sha": "4688efd48404fde84e440703fd1132a2b89a3772",
+      "subject": "fix: Electrum wallets stuck on Connecting after a failed connect (#3763)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Corrige reconexão Electrum, deadlines TLS/SOCKS, sockets atrasados, ressubscrição e timers após fechar.",
+      "changedFiles": [
+        "cw_bitcoin/lib/electrum.dart",
+        "cw_bitcoin/lib/electrum_wallet.dart",
+        "cw_bitcoin/test/electrum_client_connect_test.dart",
+        "cw_bitcoin/test/electrum_wallet_connection_test.dart",
+        "cw_core/lib/utils/proxy_socket/abstract.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/4688efd48404fde84e440703fd1132a2b89a3772"
+    },
+    {
+      "sha": "53784d2f23cb65400f080a4fd7bfc7e417cb278a",
+      "subject": "fix: use derivation indexes, not record counts, for new and discovered addresses (#3762)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Usa índices de derivação reais em novos endereços/troco/descoberta, não quantidade de linhas.",
+      "changedFiles": [
+        "cw_bitcoin/lib/electrum_wallet.dart",
+        "cw_bitcoin/lib/electrum_wallet_addresses.dart",
+        "cw_bitcoin/test/address_index_test.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/53784d2f23cb65400f080a4fd7bfc7e417cb278a"
+    },
+    {
+      "sha": "ca930515848bddd9222045d51269277693df4b48",
+      "subject": "fix old migration issues (#3761)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Preserva derivação registrada no arquivo e caminho ausente como null em migrações antigas.",
+      "changedFiles": [
+        "cw_bitcoin/lib/bitcoin_wallet.dart",
+        "cw_bitcoin/lib/electrum_derivations.dart",
+        "cw_bitcoin/lib/litecoin_wallet.dart",
+        "cw_bitcoin/lib/unknown_derivation.dart",
+        "cw_bitcoin/test/unknown_derivation_test.dart",
+        "cw_core/lib/wallet_info_legacy.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/ca930515848bddd9222045d51269277693df4b48"
+    },
+    {
+      "sha": "2527ac6083f6609fd3a5f914bbd772650822e58c",
+      "subject": "drop the duplicate default-token pass after EVM wallet init (#3774)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Remove repetição de cadastro de tokens/salvamento depois de init() EVM.",
+      "changedFiles": [
+        "cw_evm/lib/evm_chain_wallet_service.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/2527ac6083f6609fd3a5f914bbd772650822e58c"
+    },
+    {
+      "sha": "0568f4925ee579cd08c6651eb30c031060a12c3b",
+      "subject": "[performance] write wallet addresses to the database in one batch (#3772)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Agrupa gravações de endereços no banco em lote.",
+      "changedFiles": [
+        "cw_core/lib/wallet_addresses.dart",
+        "cw_core/lib/wallet_info.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/0568f4925ee579cd08c6651eb30c031060a12c3b"
+    },
+    {
+      "sha": "5e996113377c14feb8ac461b4f749beed3bc13fc",
+      "subject": "load wallet infos once when validating wallet directories at startup (#3783)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Carrega metadados das carteiras uma vez ao validar diretórios na inicialização.",
+      "changedFiles": [
+        "lib/entities/default_settings_migration.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/5e996113377c14feb8ac461b4f749beed3bc13fc"
+    },
+    {
+      "sha": "cf7d8088397327b00b3a2b38ec239631b5ae3110",
+      "subject": "don't wait for SharedPreferences writes when switching wallets (#3782)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Retira espera de preferências não críticas ao alternar carteira; não retira espera de gravação Monero.",
+      "changedFiles": [
+        "lib/core/wallet_loading_service.dart",
+        "lib/store/app_store.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/cf7d8088397327b00b3a2b38ec239631b5ae3110"
+    },
+    {
+      "sha": "72498e8797706c294549905b75b8482b8a6db043",
+      "subject": "don't run Zcash address init twice when opening a wallet (#3784)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Evita inicializar endereços Zcash duas vezes; backend fora do perfil PC.",
+      "changedFiles": [
+        "cw_zcash/lib/src/zcash_wallet_addresses.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/72498e8797706c294549905b75b8482b8a6db043"
+    },
+    {
+      "sha": "02252601ff1a898b957e6e5b030f1eac2777fa84",
+      "subject": "minor [skip ci]",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Evita abortar cadastro de token EVM em falha de consulta; fallback visual zero não comprova saldo real.",
+      "changedFiles": [
+        "cw_evm/lib/evm_chain_wallet.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/02252601ff1a898b957e6e5b030f1eac2777fa84"
+    },
+    {
+      "sha": "1945794305cda496c88b34a03065eb936eddd393",
+      "subject": "feat: add IPv6 preference support to proxy wrapper and enable for MoonPay and Onramper providers (#3760)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Prefere IPv6 nos provedores MoonPay/Onramper. Adaptado no fork para não reenviar POST após falha.",
+      "changedFiles": [
+        "cw_core/lib/utils/proxy_wrapper.dart",
+        "lib/buy/moonpay/moonpay_provider.dart",
+        "lib/buy/onramper/onramper_buy_provider.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/1945794305cda496c88b34a03065eb936eddd393"
+    },
+    {
+      "sha": "ec61b405a3a6975717b77e1ec12dae3954b502d9",
+      "subject": "Summary of changes:",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Acrescenta testes de PIN ilegível/IPv6, ajustes de autenticação e configuração Apple.",
+      "changedFiles": [
+        "cw_core/test/crypto_amount_format.dart",
+        "cw_core/test/crypto_amount_format_test.dart",
+        "cw_core/test/proxy_wrapper_prefer_ipv6_test.dart",
+        "lib/view_model/auth_view_model.dart",
+        "macos/Podfile",
+        "macos/Runner.xcodeproj/project.pbxproj",
+        "pubspec.lock",
+        "scripts/ios/app_env.sh",
+        "test/core/auth_pin_unreadable_test.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/ec61b405a3a6975717b77e1ec12dae3954b502d9"
+    },
+    {
+      "sha": "3984c3a71ea0de55f786ba5bd390d01d058bb2cd",
+      "subject": "[performance] read secure settings concurrently in SettingsStore.load (#3779)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Lê configurações do armazenamento seguro em paralelo na inicialização.",
+      "changedFiles": [
+        "lib/store/settings_store.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/3984c3a71ea0de55f786ba5bd390d01d058bb2cd"
+    },
+    {
+      "sha": "389134e41af1e182f72b9512316af2ec4accff20",
+      "subject": "don't hold up startup for the quick action fallback (#3780)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Executa a espera de fallback de ações rápidas junto com o trabalho de startup.",
+      "changedFiles": [
+        "lib/main.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/389134e41af1e182f72b9512316af2ec4accff20"
+    },
+    {
+      "sha": "89f5de4bea0be4e54c95d306d4d87b93073af1ad",
+      "subject": "chore: fix type casting and safety across multiple coin packages (#3791)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Fortalece conversões/tipos nulos em múltiplas moedas; testes de execução continuam necessários.",
+      "changedFiles": [
+        "cw_decred/lib/api/libdcrwallet.dart",
+        "cw_decred/lib/api/util.dart",
+        "cw_decred/lib/wallet.dart",
+        "cw_decred/lib/wallet_addresses.dart",
+        "cw_evm/lib/clients/evm_chain_client.dart",
+        "cw_evm/lib/evm_chain_transaction_model.dart",
+        "cw_evm/lib/evm_erc20_balance.dart",
+        "cw_evm/lib/hardware/evm_chain_trezor_credentials.dart",
+        "cw_monero/lib/api/wallet.dart",
+        "cw_solana/lib/pending_solana_transaction.dart",
+        "cw_solana/lib/solana_balance.dart",
+        "cw_solana/lib/solana_client.dart",
+        "cw_solana/lib/solana_transaction_info.dart",
+        "cw_tron/lib/tron_balance.dart",
+        "cw_tron/lib/tron_client.dart",
+        "cw_tron/lib/tron_transaction_info.dart",
+        "cw_tron/lib/tron_transaction_model.dart",
+        "cw_wownero/lib/api/wallet_manager.dart",
+        "cw_zcash/lib/src/migrate.dart",
+        "cw_zcash/lib/src/util/crc32.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/89f5de4bea0be4e54c95d306d4d87b93073af1ad"
+    },
+    {
+      "sha": "bedf18df7fb6a356f7a29be0b661e5cab3d5b0fb",
+      "subject": "update app version",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Atualiza metadados de versão.",
+      "changedFiles": [
+        "cw_core/lib/amount/money.dart",
+        "scripts/android/app_env.sh",
+        "scripts/macos/app_env.sh"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/bedf18df7fb6a356f7a29be0b661e5cab3d5b0fb"
+    },
+    {
+      "sha": "99bba541dda027ed3c426bb8d658c6f85bbb239b",
+      "subject": "derive Nano HD seeds with bip39MnemonicToSeed (#3778)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Reutiliza o novo derivador em seeds HD Nano e adiciona comparação com nanoutil.",
+      "changedFiles": [
+        "cw_nano/lib/nano_mnemonic.dart",
+        "cw_nano/lib/nano_wallet.dart",
+        "cw_nano/test/hd_seed_test.dart",
+        "lib/nano/cw_nano.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/99bba541dda027ed3c426bb8d658c6f85bbb239b"
+    },
+    {
+      "sha": "ac1b649d7617f424090a90ecba33318655163e70",
+      "subject": "Add timestamps to lightning.log entries (#3771)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Adiciona horário às entradas lightning.log.",
+      "changedFiles": [
+        "cw_bitcoin/lib/lightning/lightning_wallet.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/ac1b649d7617f424090a90ecba33318655163e70"
+    },
+    {
+      "sha": "772c8b00783fcc04b9106af84cbd97452a6489ec",
+      "subject": "Use the load-balanced cakeprc onion for Tor price requests (#3770)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Atualiza endpoint onion de preços com balanceamento; não empacota Tor no PC.",
+      "changedFiles": [
+        "lib/new-ui/model/charts/price_api_client.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/772c8b00783fcc04b9106af84cbd97452a6489ec"
+    },
+    {
+      "sha": "7f7fc4a2d09c4fb9cab8e3d124540e0193e4ca2e",
+      "subject": "Migrate and enhance BitBox integration with updated library (#3765)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Atualiza APIs e biblioteca BitBox, pareamento e integração hardware. Sem validação física neste trabalho.",
+      "changedFiles": [
+        ".github/workflows/lint.yml",
+        ".github/workflows/pr_test_build_ios.yml",
+        ".github/workflows/pr_test_build_linux.yml",
+        ".github/workflows/reusable-build.yml",
+        "cw_bitcoin/lib/hardware/bitbox_service.dart",
+        "cw_bitcoin/pubspec.yaml",
+        "cw_evm/lib/hardware/evm_chain_bitbox_credentials.dart",
+        "cw_evm/lib/hardware/evm_chain_bitbox_service.dart",
+        "cw_evm/pubspec.yaml",
+        "docs/builds/ANDROID.md",
+        "docs/builds/LINUX.md",
+        "lib/bitcoin/cw_bitcoin.dart",
+        "lib/entities/hardware_wallet/hardware_wallet_device.dart",
+        "lib/evm/cw_evm.dart",
+        "lib/new-ui/widgets/coins_page/wallet_info.dart",
+        "lib/new-ui/widgets/hardware_wallet/bitbox_paring_sheet.dart",
+        "lib/src/screens/connect_device/connect_device_page.dart",
+        "lib/src/screens/connect_device/select_device_manufacturer_page.dart",
+        "lib/view_model/hardware_wallet/bitbox_view_model.dart",
+        "pubspec.lock",
+        "pubspec_base.yaml",
+        "res/values/strings_ar.arb",
+        "res/values/strings_bg.arb",
+        "res/values/strings_cs.arb",
+        "res/values/strings_de.arb",
+        "res/values/strings_en.arb",
+        "res/values/strings_es.arb",
+        "res/values/strings_fa.arb",
+        "res/values/strings_fr.arb",
+        "res/values/strings_gn.arb",
+        "res/values/strings_ha.arb",
+        "res/values/strings_hi.arb",
+        "res/values/strings_hr.arb",
+        "res/values/strings_hy.arb",
+        "res/values/strings_id.arb",
+        "res/values/strings_it.arb",
+        "res/values/strings_ja.arb",
+        "res/values/strings_ko.arb",
+        "res/values/strings_my.arb",
+        "res/values/strings_nl.arb",
+        "res/values/strings_pl.arb",
+        "res/values/strings_pt.arb",
+        "res/values/strings_pt_BR.arb",
+        "res/values/strings_ru.arb",
+        "res/values/strings_th.arb",
+        "res/values/strings_tl.arb",
+        "res/values/strings_tr.arb",
+        "res/values/strings_uk.arb",
+        "res/values/strings_ur.arb",
+        "res/values/strings_vi.arb",
+        "res/values/strings_yo.arb",
+        "res/values/strings_zh.arb",
+        "scripts/android/docker/Dockerfile.bitbox",
+        "scripts/android/docker/Dockerfile.final",
+        "scripts/android/docker/build.sh",
+        "scripts/build_bitbox_flutter.sh",
+        "scripts/linux/docker/Dockerfile.bitbox",
+        "scripts/linux/docker/Dockerfile.final",
+        "scripts/linux/docker/build.sh",
+        "tool/configure.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/7f7fc4a2d09c4fb9cab8e3d124540e0193e4ca2e"
+    },
+    {
+      "sha": "71e84526d2206932b01b978ad2d6fd6a2739c7fa",
+      "subject": "feat: prepare for NU7 (#3764)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Prepara Zcash para NU7; não habilita Zcash no perfil PC.",
+      "changedFiles": [
+        ".github/workflows/pr_test_build_linux.yml",
+        ".github/workflows/reusable-build.yml",
+        ".github/workflows/reusable-integration-test.yml",
+        "cw_zcash/lib/src/hardware/zcash_hardware_wallet_service.dart",
+        "cw_zcash/lib/src/hardware/zcash_ledger_service.dart",
+        "cw_zcash/lib/src/pending_zcash_transaction.dart",
+        "cw_zcash/lib/src/zcash_mempool.dart",
+        "cw_zcash/lib/src/zcash_taddress_rotation.dart",
+        "cw_zcash/lib/src/zcash_wallet.dart",
+        "cw_zcash/lib/src/zcash_wallet_addresses.dart",
+        "cw_zcash/lib/src/zkooltx.dart",
+        "cw_zcash/pubspec.yaml",
+        "pubspec.lock",
+        "pubspec_overrides.yaml",
+        "scripts/android/docker/Dockerfile.decred",
+        "scripts/android/docker/Dockerfile.monero",
+        "scripts/android/docker/Dockerfile.mwebd",
+        "scripts/android/docker/Dockerfile.reown",
+        "scripts/android/docker/Dockerfile.torch",
+        "scripts/android/docker/Dockerfile.zcash",
+        "scripts/android/docker/build.sh",
+        "scripts/docker/git-credential-github.sh",
+        "scripts/linux/docker/Dockerfile.monero",
+        "scripts/linux/docker/Dockerfile.mwebd",
+        "scripts/linux/docker/Dockerfile.reown",
+        "scripts/linux/docker/Dockerfile.torch",
+        "scripts/linux/docker/Dockerfile.zcash",
+        "scripts/linux/docker/build.sh"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/71e84526d2206932b01b978ad2d6fd6a2739c7fa"
+    },
+    {
+      "sha": "b469f58d0c2afe048cc2412b51abbcdfa26f2198",
+      "subject": "Use IBM Plex Sans for chart prices (#3746)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Adiciona tipografia IBM Plex Sans para preços de gráficos.",
+      "changedFiles": [
+        "assets/fonts/IBM_Plex_Sans/IBMPlexSans-Medium.ttf",
+        "assets/fonts/IBM_Plex_Sans/IBMPlexSans-Regular.ttf",
+        "lib/new-ui/widgets/charts_page/asset_grid.dart",
+        "lib/new-ui/widgets/charts_page/chart_header.dart",
+        "lib/new-ui/widgets/charts_page/price_header.dart",
+        "pubspec_base.yaml"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/b469f58d0c2afe048cc2412b51abbcdfa26f2198"
+    },
+    {
+      "sha": "0333c845cdcf5c891345008edfbeafd52e0ec4f1",
+      "subject": "Add locale thousand separators to Charts screen prices (#3744)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Aplica separador de milhar conforme localidade aos preços dos gráficos.",
+      "changedFiles": [
+        "lib/new-ui/widgets/charts_page/asset_grid.dart",
+        "lib/new-ui/widgets/charts_page/change_display.dart",
+        "lib/new-ui/widgets/charts_page/chart_header.dart",
+        "lib/new-ui/widgets/charts_page/price_header.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/0333c845cdcf5c891345008edfbeafd52e0ec4f1"
+    },
+    {
+      "sha": "f75a175bf920dec8b3563014b919072b5ff7b407",
+      "subject": "display \"generating transaction\" as a full-modal overlay (#3740)",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Mostra geração de transação em modal completo; proteção de broadcast continua necessária.",
+      "changedFiles": [
+        "lib/new-ui/widgets/send_page/generating_transaction_overlay.dart",
+        "lib/new-ui/widgets/send_page/send_confirm_sheet.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/f75a175bf920dec8b3563014b919072b5ff7b407"
+    },
+    {
+      "sha": "d803aecf9de21461c7459c974ce5e3f2d92b70ed",
+      "subject": "bump: 6.5.3",
+      "alreadyInFork": false,
+      "assessmentPtBr": "Marca a release upstream 6.5.3.",
+      "changedFiles": [
+        "assets/new-ui/changelog/text/changelog_ar.json",
+        "assets/new-ui/changelog/text/changelog_bg.json",
+        "assets/new-ui/changelog/text/changelog_cs.json",
+        "assets/new-ui/changelog/text/changelog_de.json",
+        "assets/new-ui/changelog/text/changelog_en.json",
+        "assets/new-ui/changelog/text/changelog_es.json",
+        "assets/new-ui/changelog/text/changelog_fa.json",
+        "assets/new-ui/changelog/text/changelog_fr.json",
+        "assets/new-ui/changelog/text/changelog_gn.json",
+        "assets/new-ui/changelog/text/changelog_ha.json",
+        "assets/new-ui/changelog/text/changelog_hi.json",
+        "assets/new-ui/changelog/text/changelog_hr.json",
+        "assets/new-ui/changelog/text/changelog_hy.json",
+        "assets/new-ui/changelog/text/changelog_id.json",
+        "assets/new-ui/changelog/text/changelog_it.json",
+        "assets/new-ui/changelog/text/changelog_ja.json",
+        "assets/new-ui/changelog/text/changelog_ko.json",
+        "assets/new-ui/changelog/text/changelog_my.json",
+        "assets/new-ui/changelog/text/changelog_nl.json",
+        "assets/new-ui/changelog/text/changelog_pl.json",
+        "assets/new-ui/changelog/text/changelog_pt.json",
+        "assets/new-ui/changelog/text/changelog_ru.json",
+        "assets/new-ui/changelog/text/changelog_th.json",
+        "assets/new-ui/changelog/text/changelog_tl.json",
+        "assets/new-ui/changelog/text/changelog_tr.json",
+        "assets/new-ui/changelog/text/changelog_uk.json",
+        "assets/new-ui/changelog/text/changelog_ur.json",
+        "assets/new-ui/changelog/text/changelog_vi.json",
+        "assets/new-ui/changelog/text/changelog_yo.json",
+        "assets/new-ui/changelog/text/changelog_zh-cn.json",
+        "assets/new-ui/changelog/text/monerocom_changelog_en.json",
+        "cw_bitcoin/lib/electrum_transaction_info.dart",
+        "cw_bitcoin/lib/electrum_wallet.dart",
+        "lib/new-ui/new_dashboard.dart",
+        "lib/new-ui/pages/buy_sell/buy_sell_amount_page.dart",
+        "lib/new-ui/pages/send_page.dart",
+        "lib/new-ui/widgets/changelog_modal.dart",
+        "lib/utils/exception_handler.dart",
+        "scripts/android/app_env.sh",
+        "scripts/ios/app_env.sh",
+        "scripts/linux/app_env.sh",
+        "scripts/macos/app_env.sh",
+        "tool/translate_changelog.dart"
+      ],
+      "sourceUrl": "https://github.com/cake-tech/cake_wallet/commit/d803aecf9de21461c7459c974ce5e3f2d92b70ed"
+    }
+  ]
+}
