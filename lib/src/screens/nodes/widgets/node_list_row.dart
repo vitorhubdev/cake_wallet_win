@@ -2,18 +2,23 @@ import 'package:cake_wallet/routes.dart';
 import 'package:cake_wallet/src/widgets/cake_image_widget.dart';
 import 'package:cake_wallet/view_model/node_list/node_list_view_model.dart';
 import 'package:cw_core/node.dart';
+import 'package:cw_core/monero_node_health.dart';
+import 'package:cake_wallet/utils/monero_health_text.dart';
 import 'package:flutter/material.dart';
 
 class NodeListRow extends StatelessWidget {
-  NodeListRow(
-      {required this.node,
-      required this.onTap,
-      required this.onEditComplete,
-      required this.isSelected,
-      required this.isPow,
-      this.speed,
-      this.vertical = 10.0,
-      this.horizontal = 12.0});
+  NodeListRow({
+    required this.node,
+    required this.onTap,
+    required this.onEditComplete,
+    required this.isSelected,
+    required this.isPow,
+    this.speed,
+    this.health,
+    this.latencyMs,
+    this.vertical = 10.0,
+    this.horizontal = 12.0,
+  });
 
   final Node node;
   final bool isPow;
@@ -21,11 +26,14 @@ class NodeListRow extends StatelessWidget {
   final Future<void> Function(Object?) onEditComplete;
   final bool isSelected;
   final NodeSpeed? speed;
+  final MoneroNodeHealth? health;
+  final int? latencyMs;
   final double vertical;
   final double horizontal;
 
   @override
   Widget build(BuildContext context) {
+    final pt = Localizations.localeOf(context).languageCode == 'pt';
     final leading = buildLeading(context);
     final trailing = buildTrailing(context);
 
@@ -51,23 +59,53 @@ class NodeListRow extends StatelessWidget {
                       spacing: 4,
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        Text(
-                          hasLabel ? node.label! : uriText,
-                          style: TextStyle(fontSize: 12),
+                        Flexible(
+                          child: Text(
+                            hasLabel ? node.label! : uriText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ),
                         if (badgePath != null)
                           CakeImageWidget(
                             imageUrl: badgePath,
                             colorFilter: ColorFilter.mode(
-                                Theme.of(context).colorScheme.primary, BlendMode.srcIn),
-                          )
+                              Theme.of(context).colorScheme.primary,
+                              BlendMode.srcIn,
+                            ),
+                          ),
                       ],
                     ),
+                    if (health != null) ...[
+                      Text(
+                        moneroHealthTitle(health!, portuguese: pt),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: health!.rpcAvailable
+                              ? Theme.of(context).colorScheme.onSurfaceVariant
+                              : Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      Text(
+                        moneroHealthDetail(health!, portuguese: pt),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ] else if (latencyMs != null)
+                      Text(
+                        '${pt ? 'Latência' : 'Latency'}: $latencyMs ms',
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     if (hasLabel)
                       Text(
                         uriText,
                         style: TextStyle(
-                            fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                   ],
                 ),
@@ -83,11 +121,7 @@ class NodeListRow extends StatelessWidget {
   Widget buildLeading(BuildContext context) => isSelected
       ? Padding(
           padding: const EdgeInsets.all(4.0),
-          child: Icon(
-            Icons.check,
-            size: 16,
-            color: Theme.of(context).colorScheme.primary,
-          ),
+          child: Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary),
         )
       : SizedBox(width: 24, height: 24);
 
@@ -106,19 +140,22 @@ class NodeListRow extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: () async {
             final res = await Navigator.of(context).pushNamed(
-                isPow ? Routes.newPowNode : Routes.newNode,
-                arguments: {'editingNode': node, 'isSelected': isSelected});
+              isPow ? Routes.newPowNode : Routes.newNode,
+              arguments: {'editingNode': node, 'isSelected': isSelected},
+            );
             await onEditComplete(res);
           },
           child: Padding(
             padding: const EdgeInsets.only(right: 8.0, left: 12.0),
             child: CakeImageWidget(
               imageUrl: "assets/new-ui/3dots_vertical.svg",
-              colorFilter:
-                  ColorFilter.mode(Theme.of(context).colorScheme.onSurfaceVariant, BlendMode.srcIn),
+              colorFilter: ColorFilter.mode(
+                Theme.of(context).colorScheme.onSurfaceVariant,
+                BlendMode.srcIn,
+              ),
             ),
           ),
-        )
+        ),
       ],
     );
   }

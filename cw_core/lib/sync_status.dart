@@ -1,3 +1,5 @@
+import 'utils/monero_sync_metrics.dart';
+
 abstract class SyncStatus {
   const SyncStatus();
   double progress();
@@ -44,6 +46,8 @@ class SyncingSyncStatus extends SyncStatus {
   /// Reset the global sync start time (call when sync completes or fails)
   static void resetSyncStartTime() {
     _globalSyncStartTime = null;
+    blockHistory.clear();
+    lastEtaDuration = null;
   }
 
   factory SyncingSyncStatus.fromHeightValues(int chainTip, int initialSyncHeight, int syncHeight) {
@@ -58,7 +62,14 @@ class SyncingSyncStatus extends SyncStatus {
   }
 
   static void updateEtaHistory(int blocksLeft) {
-    blockHistory[DateTime.now()] = blocksLeft;
+    final now = DateTime.now();
+    blockHistory.removeWhere(
+      (time, _) => now.difference(time) > const Duration(seconds: 60) || time.isAfter(now),
+    );
+    blockHistory[now] = blocksLeft;
+    while (blockHistory.length > 120) {
+      blockHistory.remove(blockHistory.keys.first);
+    }
   }
 
   static Map<DateTime, int> blockHistory = {};
@@ -160,9 +171,10 @@ class SyncingSyncStatus extends SyncStatus {
     if (timestamps.length < 2) return 0;
 
     // Sort by timestamp to ensure chronological order
-    final sortedData =
-        List.generate(timestamps.length, (i) => MapEntry(timestamps[i], blockCounts[i]))
-          ..sort((a, b) => a.key.compareTo(b.key));
+    final sortedData = List.generate(
+      timestamps.length,
+      (i) => MapEntry(timestamps[i], blockCounts[i]),
+    )..sort((a, b) => a.key.compareTo(b.key));
 
     double totalWeightedTime = 0;
     double totalWeightedBlocks = 0;
@@ -293,4 +305,16 @@ class TimedOutSyncStatus extends NotConnectedSyncStatus {
 class LostConnectionSyncStatus extends NotConnectedSyncStatus {
   @override
   String toString() => 'Reconnecting';
+}
+
+/// Measurements are scoped to one native Monero wallet and node session.
+class MoneroSyncingSyncStatus extends SyncingSyncStatus {
+  MoneroSyncingSyncStatus(
+    super.blocksLeft,
+    super.ptc, {
+    required this.scannedHeight,
+    required this.metrics,
+  });
+  final int scannedHeight;
+  final MoneroSyncMetrics metrics;
 }

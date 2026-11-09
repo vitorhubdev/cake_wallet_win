@@ -6,6 +6,8 @@ import 'dart:math' as math;
 import 'package:blockchain_utils/hex/hex.dart';
 import "package:cw_core/exceptions/cake_exception.dart";
 import 'package:cw_core/node_list.dart';
+import 'package:cw_core/monero_node_health.dart';
+import 'package:cw_core/utils/monero_probe_request.dart';
 import 'package:cw_core/utils/print_verbose.dart';
 import 'package:cw_core/utils/proxy_socket/abstract.dart';
 import 'package:cw_core/utils/proxy_wrapper.dart';
@@ -69,38 +71,27 @@ class Node {
   }
 
   @override
-  String toString() {
-    return """Node(
-  uriRaw: $uriRaw,
-  path: $path,
-  login: $login,
-  password: $password,
-  useSSL: $useSSL,
-  trusted: $trusted,
-  socksProxyAddress: $socksProxyAddress,
-  isEnabledForAutoSwitching: $isEnabledForAutoSwitching,
-  isOfficial: $isOfficial,
-  isBuiltin: $isBuiltin,
-  isDefault: $isDefault
- })""";
-  }
+  String toString() =>
+      'Node(id: $id, type: $type, tls: $isSSL, '
+      'credentialsConfigured: ${login?.isNotEmpty == true}, '
+      'proxyConfigured: $useSocksProxy)';
 
   Node.fromMap(Map<String, Object?> map)
-      : id = (map[selfIdColumn] ?? 0) as int,
-        uriRaw = map['uri'] as String? ?? '',
-        path = map['path'] as String? ?? '',
-        login = map['login'] as String?,
-        label = map['label'] as String?,
-        password = map['password'] as String?,
-        isPow = _getBoolFromDB(map['isPow']),
-        useSSL = _getBoolFromDB(map['useSSL']),
-        typeRaw = (map["typeRaw"] ?? 0) as int,
-        trusted = _getBoolFromDB(map['trusted']),
-        socksProxyAddress = map['socksProxyAddress'] as String?,
-        isEnabledForAutoSwitching = _getBoolFromDB(map['isEnabledForAutoSwitching']),
-        isOfficial = _getBoolFromDB(map['isOfficial']),
-        isBuiltin = _getBoolFromDB(map['isBuiltin']),
-        isDefault = _getBoolFromDB(map['isDefault']);
+    : id = (map[selfIdColumn] ?? 0) as int,
+      uriRaw = map['uri'] as String? ?? '',
+      path = map['path'] as String? ?? '',
+      login = map['login'] as String?,
+      label = map['label'] as String?,
+      password = map['password'] as String?,
+      isPow = _getBoolFromDB(map['isPow']),
+      useSSL = _getBoolFromDB(map['useSSL']),
+      typeRaw = (map["typeRaw"] ?? 0) as int,
+      trusted = _getBoolFromDB(map['trusted']),
+      socksProxyAddress = map['socksProxyAddress'] as String?,
+      isEnabledForAutoSwitching = _getBoolFromDB(map['isEnabledForAutoSwitching']),
+      isOfficial = _getBoolFromDB(map['isOfficial']),
+      isBuiltin = _getBoolFromDB(map['isBuiltin']),
+      isDefault = _getBoolFromDB(map['isDefault']);
 
   static bool _getBoolFromDB(value, {bool? defaultValue}) {
     if (value is bool) {
@@ -128,29 +119,29 @@ class Node {
       'isEnabledForAutoSwitching': isEnabledForAutoSwitching ? 1 : 0,
       "isOfficial": isOfficial ? 1 : 0,
       "isBuiltin": isBuiltin ? 1 : 0,
-      "isDefault": isDefault ? 1 : 0
+      "isDefault": isDefault ? 1 : 0,
     };
   }
 
   Node.fromUri(Uri uri, WalletType type)
-      : id = 0,
-        uriRaw =
-            "${uri.host}${uri.hasPort ? ':${uri.port}' : (uri.queryParameters['port']?.isNotEmpty == true ? ':${uri.queryParameters['port']}' : '')}",
-        path = uri.path,
-        login = uri.userInfo.contains(':')
-            ? uri.userInfo.split(':')[0]
-            : uri.queryParameters['username'],
-        password = uri.userInfo.contains(':')
-            ? uri.userInfo.split(':')[1]
-            : uri.queryParameters['password'],
-        useSSL = uri.queryParameters['protocol'] == 'https',
-        trusted = uri.queryParameters['trusted'] == 'true',
-        isPow = false,
-        isEnabledForAutoSwitching = false,
-        isOfficial = false,
-        isBuiltin = false,
-        isDefault = false,
-        typeRaw = serializeToInt(type);
+    : id = 0,
+      uriRaw =
+          "${uri.host}${uri.hasPort ? ':${uri.port}' : (uri.queryParameters['port']?.isNotEmpty == true ? ':${uri.queryParameters['port']}' : '')}",
+      path = uri.path,
+      login = uri.userInfo.contains(':')
+          ? uri.userInfo.split(':')[0]
+          : uri.queryParameters['username'],
+      password = uri.userInfo.contains(':')
+          ? uri.userInfo.split(':')[1]
+          : uri.queryParameters['password'],
+      useSSL = uri.queryParameters['protocol'] == 'https',
+      trusted = uri.queryParameters['trusted'] == 'true',
+      isPow = false,
+      isEnabledForAutoSwitching = false,
+      isOfficial = false,
+      isBuiltin = false,
+      isDefault = false,
+      typeRaw = serializeToInt(type);
 
   Future<int> delete() async {
     return await db!.delete(tableName, where: '${selfIdColumn} = ?', whereArgs: [id]);
@@ -173,8 +164,11 @@ class Node {
     return id;
   }
 
-  static Future<List<Node>> selectList(String where, List<dynamic> whereArgs,
-      {String? orderBy}) async {
+  static Future<List<Node>> selectList(
+    String where,
+    List<dynamic> whereArgs, {
+    String? orderBy,
+  }) async {
     if (orderBy == null) {
       orderBy = selfIdColumn;
     }
@@ -217,15 +211,19 @@ class Node {
   }
 
   static Future<Node?> getDefaultForWalletType(WalletType type) async {
-    return (await selectList(
-            "typeRaw = ? AND isPow = ? AND isDefault = ?", [serializeToInt(type), 0, 1]))
-        .firstOrNull;
+    return (await selectList("typeRaw = ? AND isPow = ? AND isDefault = ?", [
+      serializeToInt(type),
+      0,
+      1,
+    ])).firstOrNull;
   }
 
   static Future<Node?> getDefaultPowForWalletType(WalletType type) async {
-    return (await selectList(
-            "typeRaw = ? AND isPow = ? AND isDefault = ?", [serializeToInt(type), 1, 1]))
-        .firstOrNull;
+    return (await selectList("typeRaw = ? AND isPow = ? AND isDefault = ?", [
+      serializeToInt(type),
+      1,
+      1,
+    ])).firstOrNull;
   }
 
   static Future<List<Node>> getAllForWalletTypePow(WalletType type) async {
@@ -301,7 +299,8 @@ class Node {
       case WalletType.zano:
       case WalletType.decred:
         return Uri.parse(
-            "http${isSSL ? "s" : ""}://$uriRaw${path!.startsWith("/") || path!.isEmpty ? path : "/$path"}");
+          "http${isSSL ? "s" : ""}://$uriRaw${path!.startsWith("/") || path!.isEmpty ? path : "/$path"}",
+        );
       case WalletType.none:
         throw BadWalletTypeException('Unexpected type ${type.toString()} for Node uri', type);
     }
@@ -397,10 +396,80 @@ class Node {
     }
   }
 
+  /// Ephemeral identity includes transport and credentials so measurements are
+  /// never reused after editing a node, changing Tor or switching RPC accounts.
+  /// This value stays in memory; do not put it in logs, telemetry or storage.
+  String get healthIdentity => sha256
+      .convert(
+        utf8.encode(
+          jsonEncode([
+            typeRaw,
+            uriRaw,
+            path,
+            isSSL,
+            login ?? '',
+            password ?? '',
+            socksProxyAddress,
+            CakeTor.instance?.enabled,
+            CakeTor.instance?.started,
+            CakeTor.instance?.port,
+          ]),
+        ),
+      )
+      .toString();
+
+  /// Observe the daemon itself, including through SOCKS. A listening proxy port
+  /// alone is not a healthy Monero node. Never mutate the node's TLS settings.
+  Future<MoneroNodeHealth> probeMoneroHealth({
+    String expectedNetwork = 'mainnet',
+    int samples = 3,
+    Duration timeout = const Duration(seconds: 15),
+    MoneroProbeCancellation? cancellation,
+  }) async {
+    final tor = CakeTor.instance;
+    final torEnabled = tor?.enabled == true;
+    final loginSnapshot = login ?? '';
+    final passwordSnapshot = password ?? '';
+    final proxy = torEnabled ? '127.0.0.1:${tor!.port}' : socksProxyAddress;
+    final viaProxy = proxy?.isNotEmpty == true;
+    MoneroNodeHealth unavailable(MoneroNodeState state) =>
+        MoneroNodeHealth(state: state, checkedAt: DateTime.now(), viaProxy: viaProxy, tls: isSSL);
+    if (torEnabled && tor?.started != true) {
+      return unavailable(MoneroNodeState.proxyUnavailable);
+    }
+    try {
+      final raw = Uri.parse(uriRaw.contains('://') ? uriRaw : 'http://$uriRaw');
+      if (raw.host.isEmpty || raw.userInfo.isNotEmpty || raw.hasFragment || raw.hasQuery) {
+        return unavailable(MoneroNodeState.invalidConfig);
+      }
+      final basePath = (path?.isNotEmpty == true ? path! : raw.path).replaceAll(RegExp(r'/+$'), '');
+      final rpcPath = basePath.endsWith('/json_rpc') ? basePath : '$basePath/json_rpc';
+      final endpoint = raw.replace(
+        scheme: isSSL ? 'https' : 'http',
+        path: rpcPath.startsWith('/') ? rpcPath : '/$rpcPath',
+      );
+      return await requestMoneroNodeHealth(
+        endpoint: endpoint,
+        socksProxy: proxy,
+        login: loginSnapshot,
+        password: passwordSnapshot,
+        expectedNetwork: expectedNetwork,
+        samples: samples,
+        timeout: timeout,
+        cancellation: cancellation,
+      );
+    } catch (_) {
+      return unavailable(MoneroNodeState.invalidConfig);
+    }
+  }
+
   Future<bool> requestMoneroNode({
     String methodName = 'get_info',
     Duration timeout = const Duration(seconds: 10),
   }) async {
+    if (type == WalletType.monero && methodName == 'get_info') {
+      return (await probeMoneroHealth(samples: 1, timeout: timeout)).rpcAvailable;
+    }
     if (timeout.inMicroseconds <= 0) return false;
     final elapsed = Stopwatch()..start();
     Duration remainingTime() {
@@ -523,12 +592,10 @@ class Node {
       final response = await ProxyWrapper().post(
         clearnetUri: uri,
         headers: {"Content-Type": "application/json", "nano-app": "cake-wallet"},
-        body: jsonEncode(
-          {
-            "action": "account_balance",
-            "account": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
-          },
-        ),
+        body: jsonEncode({
+          "action": "account_balance",
+          "account": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+        }),
       );
 
       final data = jsonDecode(response.body);
@@ -537,7 +604,8 @@ class Node {
           data["balance"] == null ||
           data["receivable"] == null) {
         throw ServerResponseException(
-            "Error while trying to get balance! ${data["error"] != null ? data["error"] : ""}");
+          "Error while trying to get balance! ${data["error"] != null ? data["error"] : ""}",
+        );
       }
       return true;
     } catch (_) {
@@ -547,12 +615,7 @@ class Node {
 
   Future<bool> requestEthereumServer() async {
     try {
-      final req = await ProxyWrapper()
-          .getHttpClient()
-          .getUrl(
-            uri,
-          )
-          .timeout(Duration(seconds: 15));
+      final req = await ProxyWrapper().getHttpClient().getUrl(uri).timeout(Duration(seconds: 15));
       final response = await req.close();
 
       return response.statusCode >= 200 && response.statusCode < 300;
@@ -642,7 +705,7 @@ class DigestAuth {
 
   /// Helper to compute a random cnonce.
   String _computeCnonce() {
-    final math.Random rnd = math.Random();
+    final math.Random rnd = math.Random.secure();
     final List<int> values = List<int>.generate(16, (i) => rnd.nextInt(256));
     return hex.encode(values);
   }

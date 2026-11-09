@@ -167,3 +167,35 @@ Unicode normalization to an existing wallet: it can change its identity. The
 52 upstream compatibility vectors are a mandatory regression gate. The updated
 BitBox package is pinned at `3d1c607f14c6d5bace2971ec4c10b5201053cc56` and checked
 against the actual resolved Pub lockfile, not only a requested dependency.
+
+## Monero diagnostics and stability update (2026-11-09)
+
+Node management now displays RPC latency in milliseconds (median of up to three
+samples), spread, the reported daemon height and explicit connection errors.
+A low latency never proves node honesty or wallet synchronization. Measurements
+are temporary and scoped to the node, credentials, proxy and wallet session;
+selection remains manual. At most three node probes run concurrently.
+
+HTTP 401/403/429, TLS/DNS errors, TCP refusal, proxy failure and timeout are
+separate states. HTTP 403 or a refused socket does not establish that an IP is
+banned. The application neither queries an external IP service nor attempts to
+evade a server's access policy. Retry-After is respected by the visible test.
+
+The dashboard has an explicit test button. It also reports observed scan
+progress in blocks/s, not Mbps; rate history is bounded and reset on wallet/node
+change, height rollback or sleep/resume gaps. Repeated unavailable native height
+samples invalidate a stale synced state instead of leaving it indefinitely green.
+
+Probes use bounded get_info JSON bodies, fixed Content-Length required by
+monerod, no redirects, strict TLS, and no wallet addresses/keys. SOCKS/Tor target
+resolution stays at the proxy. A stalled SOCKS/TLS probe closes its transport;
+it never stops the native wallet's synchronization.
+
+Monero confirmations share one submission per prepared object. Successful
+submission is retained, failures are not retried automatically, and UR/normal
+submission cannot race the same object. Native commits now honor the native
+boolean result and share the existing persistence/close barrier. Trezor's error
+path reads a Wallet error instead of casting a PendingTransaction pointer to
+UnsignedTransaction. No fee, amount, key derivation or restore-height value was
+changed. Synthetic and offline tests do not certify real mainnet transfers or
+physical hardware-wallet behavior.

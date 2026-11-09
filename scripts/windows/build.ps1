@@ -46,6 +46,7 @@ try {
     if (-not $IsWindows) { throw 'This script requires PowerShell 7 on Windows x64.' }
     if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $BuildNumber -lt 1) { throw 'Invalid build version.' }
     if ($Stage -in @('All', 'Configure')) {
+        dart tool/pc_monero_health_checks.dart
         if (-not $SkipPrepare) {
             python scripts/windows/prepare_dependencies.py
             if ($LASTEXITCODE) { throw 'Dependency preparation failed.' }
@@ -62,6 +63,7 @@ try {
         flutter pub get
         python scripts/windows/prepare_dependencies.py --verify-resolved
         dart run tool/configure_windows_secrets.dart
+        dart run tool/pc_monero_proxy_checks.dart
 
         # Generate the MWEB ABI from the same header that produced mweb.dll.
         Push-Location cw_mweb
@@ -99,7 +101,7 @@ try {
             test/core/monero_node_probe_test.dart `
             test/core/auth_pin_unreadable_test.dart `
             test/entities/wallet_contact_test.dart `
-            test/evm --reporter expanded
+            test/evm test/monero/pc_node_adapter_test.dart test/monero/pc_diagnostics_widget_test.dart --reporter expanded
         Push-Location cw_core
         try { flutter test test/amount test/bip39_seed_test.dart test/proxy_wrapper_prefer_ipv6_test.dart test/pc_post_no_replay_test.dart --reporter expanded } finally { Pop-Location }
         Push-Location cw_bitcoin
