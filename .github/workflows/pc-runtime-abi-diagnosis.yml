@@ -1,0 +1,77 @@
+name: Diagnose precise Linux runtime requirements
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-runtime-abi-diagnosis.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnosis:
+    name: ABI diagnosis ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu-26-04, fedora-45, archlinux-base-20261101-0-620205]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: db9f29dafe6393cfed3e64da8133f709c63864c5
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-Linux-distribution
+          path: dist
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 42717337151
+          github-token: ${{ github.token }}
+      - name: Verify artifact and add diagnostic-only loader evidence
+        id: runtime
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum --check SHA256SUMS-linux.txt)
+          chmod 755 dist/*.AppImage
+          python3 - <<'PY'
+          import json,os,pathlib
+          images=json.loads(pathlib.Path('scripts/pc/linux-runtime-images.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('base='+images[os.environ['IMAGE']]['reference']+'\n')
+          p=pathlib.Path('scripts/pc/runtime/Dockerfile');s=p.read_text()
+          needle='USER 1000:1000'
+          assert s.count(needle)==1
+          s=s.replace(needle,"RUN getent group 1000 >/dev/null || echo 'pc-ci:x:1000:' >> /etc/group\nRUN getent passwd 1000 >/dev/null || echo 'pc-ci:x:1000:1000:Disposable CI:/home/pc-ci:/bin/bash' >> /etc/passwd\n"+needle)
+          p.write_text(s)
+          p=pathlib.Path('scripts/pc/runtime/verify.py');s=p.read_text()
+          needle="raise RuntimeError('Unresolved ELF dependencies: '+path.name+' '+','.join(missing))"
+          assert s.count(needle)==1
+          s=s.replace(needle,"raise RuntimeError('Unresolved ELF dependencies: '+path.name+' '+','.join(missing)+'\\n'+result.stdout[-16000:]+'\\n'+result.stderr[-4000:])")
+          p.write_text(s)
+          PY
+      - name: Build distribution with a real nonprivileged D-Bus identity
+        env:
+          BASE_IMAGE: ${{ steps.runtime.outputs.base }}
+        run: docker build --pull --build-arg "BASE_IMAGE=$BASE_IMAGE" -t cake-pc-runtime -f scripts/pc/runtime/Dockerfile scripts/pc/runtime
+      - name: Retain all original gates and emit the precise missing ABI
+        env:
+          PC_VERSION: '6.5.3'
+          PC_BUILD: '1007'
+          PC_SOURCE_COMMIT: '373e326c74d74ad4e7b90fda135a72fde6fffe58'
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=1g \
+            -e GITHUB_ACTIONS=true -e RUNNER_ENVIRONMENT=github-hosted \
+            -e PC_VERSION -e PC_BUILD -e PC_SOURCE_COMMIT \
+            -v "$PWD:/source:ro" -v "$PWD/dist:/dist:ro" \
+            cake-pc-runtime "/dist/CakeWalletPC-Linux-x64-$PC_VERSION-$PC_BUILD.AppImage" \
+            2>&1 | tee abi-diagnosis.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: abi-diagnosis-${{ matrix.image }}
+          path: abi-diagnosis.txt
+          retention-days: 7
+          if-no-files-found: ignore
