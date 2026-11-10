@@ -54,15 +54,17 @@ jobs:
         env:
           BASE_IMAGE: ${{ steps.runtime.outputs.base }}
         run: docker build --pull --build-arg "BASE_IMAGE=$BASE_IMAGE" -t cake-pc-runtime -f scripts/pc/runtime/Dockerfile scripts/pc/runtime
-      - name: Retain all original gates and emit the precise missing ABI
+      - name: Retain all original gates with executable disposable app storage
         env:
           PC_VERSION: '6.5.3'
           PC_BUILD: '1007'
           PC_SOURCE_COMMIT: '373e326c74d74ad4e7b90fda135a72fde6fffe58'
         run: |
           set -euo pipefail
+          # Docker tmpfs defaults to noexec. This container needs to execute
+          # the extracted application; network, privilege and host mounts stay restricted.
           docker run --rm --network none --read-only --cap-drop ALL \
-            --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=1g \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,exec,mode=1777,size=1g \
             -e GITHUB_ACTIONS=true -e RUNNER_ENVIRONMENT=github-hosted \
             -e PC_VERSION -e PC_BUILD -e PC_SOURCE_COMMIT \
             -v "$PWD:/source:ro" -v "$PWD/dist:/dist:ro" \
