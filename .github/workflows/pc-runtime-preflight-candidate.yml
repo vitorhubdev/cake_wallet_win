@@ -1,0 +1,19 @@
+name: Preflight full Linux AppImage runtime matrix before XMR release
+on:
+  push:
+    branches: [pc-v6.5.3-linux-candidate-20261108]
+    paths:
+      - .github/workflows/pc-runtime-preflight-candidate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  five-distributions:
+    uses: ./.github/workflows/pc-linux-runtime.yml
+    with:
+      version: '6.5.3'
+      build: '1009'
+      source_commit: 'db9f29dafe6393cfed3e64da8133f709c63864c5'
+      harness_commit: '${{ github.sha }}'
+      artifact_run_id: '42724858342'
