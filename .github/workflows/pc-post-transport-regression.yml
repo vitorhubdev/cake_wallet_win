@@ -61,7 +61,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/windows/prepare_dependencies.py --sources-only
+          # A focused HTTP test does not need native Monero/MWEB binaries.
+          # Prepare the exact pinned Dart package archives without invoking the
+          # production build's native-artifact integrity gate.
+          python3 - <<'PY'
+          from scripts.windows.prepare_dependencies import DEPENDENCIES, ROOT, download, extract_sources
+          for name, (url, digest) in DEPENDENCIES.items():
+              extract_sources(download(url, digest), ROOT / 'scripts' / name)
+          target = ROOT / 'cw_core' / 'pubspec_overrides.yaml'
+          overrides = (ROOT / 'pubspec_overrides.yaml').read_bytes()
+          target.unlink(missing_ok=True)
+          target.write_bytes(overrides)
+          PY
           cd cw_core
           flutter pub get
       - name: Run the actual Dart/Flutter POST no-replay tests
