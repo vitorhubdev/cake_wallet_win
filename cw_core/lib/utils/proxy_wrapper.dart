@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:cw_core/utils/prefer_ipv6_connection.dart';
 import "package:cw_core/exceptions/cake_exception.dart";
 import 'package:cw_core/utils/proxy_logger/abstract.dart';
 import 'package:cw_core/utils/proxy_socket/abstract.dart';
@@ -19,21 +21,25 @@ class ProxyWrapper {
   }
 
   ProxyWrapper._internal();
-  Future<ProxySocket> getSocksSocket(bool sslEnabled, String host, int port,
-      {Duration? connectionTimeout}) async {
+  Future<ProxySocket> getSocksSocket(
+    bool sslEnabled,
+    String host,
+    int port, {
+    Duration? connectionTimeout,
+  }) async {
     logger?.log(
-        uri: Uri(
-          scheme: sslEnabled ? "https" : "http",
-          host: host,
-          port: port,
-        ),
-        method: RequestMethod.newProxySocket,
-        body: Uint8List(0),
-        response: null,
-        network: requestNetwork(),
-        error: null);
-    return ProxySocket.connect(sslEnabled, ProxyAddress(host: host, port: port),
-        connectionTimeout: connectionTimeout);
+      uri: Uri(scheme: sslEnabled ? "https" : "http", host: host, port: port),
+      method: RequestMethod.newProxySocket,
+      body: Uint8List(0),
+      response: null,
+      network: requestNetwork(),
+      error: null,
+    );
+    return ProxySocket.connect(
+      sslEnabled,
+      ProxyAddress(host: host, port: port),
+      connectionTimeout: connectionTimeout,
+    );
   }
 
   RequestNetwork requestNetwork() {
@@ -59,26 +65,24 @@ class ProxyWrapper {
   int getPort() => CakeTor.instance!.port;
 
   @Deprecated(
-      'Use ProxyWrapper().get/post/put methods instead, and provide proper clearnet and onion uri.')
+    'Use ProxyWrapper().get/post/put methods instead, and provide proper clearnet and onion uri.',
+  )
   HttpClient getHttpClient({int? portOverride, bool internal = false}) {
     if (!internal) {
       logger?.log(
-          uri: null,
-          method: RequestMethod.newProxySocket,
-          body: Uint8List(0),
-          response: null,
-          network: requestNetwork(),
-          error: null);
+        uri: null,
+        method: RequestMethod.newProxySocket,
+        body: Uint8List(0),
+        response: null,
+        network: requestNetwork(),
+        error: null,
+      );
     }
     if (CakeTor.instance!.started) {
       // Assign connection factory.
       final client = HttpClient();
       SocksTCPClient.assignToHttpClient(client, [
-        ProxySettings(
-          InternetAddress.loopbackIPv4,
-          CakeTor.instance!.port,
-          password: null,
-        ),
+        ProxySettings(InternetAddress.loopbackIPv4, CakeTor.instance!.port, password: null),
       ]);
       return client;
     } else {
@@ -98,31 +102,16 @@ class ProxyWrapper {
     try {
       switch (method) {
         case RequestMethod.get:
-          resp = await client.get(
-            uri,
-            headers: headers,
-          );
+          resp = await client.get(uri, headers: headers);
           break;
         case RequestMethod.delete:
-          resp = await client.delete(
-            uri,
-            headers: headers,
-            body: body,
-          );
+          resp = await client.delete(uri, headers: headers, body: body);
           break;
         case RequestMethod.post:
-          resp = await client.post(
-            uri,
-            headers: headers,
-            body: body,
-          );
+          resp = await client.post(uri, headers: headers, body: body);
           break;
         case RequestMethod.put:
-          resp = await client.put(
-            uri,
-            headers: headers,
-            body: body,
-          );
+          resp = await client.put(uri, headers: headers, body: body);
           break;
         case RequestMethod.newHttpClient:
         case RequestMethod.newHttpIOClient:
@@ -136,7 +125,7 @@ class ProxyWrapper {
     } finally {
       logger?.log(
         uri: uri,
-        method: RequestMethod.get,
+        method: method,
         body: utf8.encode(body ?? ''),
         response: resp,
         network: requestNetwork(),
@@ -198,16 +187,14 @@ class ProxyWrapper {
 
     if (clearnetUri != null) {
       try {
-        return HttpOverrides.runZoned(
-          () async {
-            return await _make(
-              method: RequestMethod.get,
-              client: ioc.IOClient(),
-              uri: clearnetUri,
-              headers: headers,
-            );
-          },
-        );
+        return HttpOverrides.runZoned(() async {
+          return await _make(
+            method: RequestMethod.get,
+            client: ioc.IOClient(),
+            uri: clearnetUri,
+            headers: headers,
+          );
+        });
       } catch (_) {
         // we weren't able to get a response:
         rethrow;
@@ -225,6 +212,7 @@ class ProxyWrapper {
     String? body,
     bool allowMitmMoneroBypassSSLCheck = false,
     Duration? timeout,
+    bool preferIPv6 = false,
   }) async {
     final torEnabled = CakeTor.instance!.started;
     final uri = torEnabled ? (onionUri ?? clearnetUri) : clearnetUri;
@@ -237,6 +225,14 @@ class ProxyWrapper {
     // leaving its socket running behind the next periodic connection check.
     // ignore: deprecated_member_use_from_same_package
     final httpClient = torEnabled ? getHttpClient(portOverride: portOverride) : HttpClient();
+    if (!torEnabled && preferIPv6) {
+      httpClient.connectionFactory = (uri, proxyHost, proxyPort) => connectPreferIPv6(
+        uri,
+        proxyHost,
+        proxyPort,
+        onBadCertificate: allowMitmMoneroBypassSSLCheck ? (_) => true : null,
+      );
+    }
     final client = ioc.IOClient(httpClient);
     try {
       if (allowMitmMoneroBypassSSLCheck) {
@@ -302,17 +298,15 @@ class ProxyWrapper {
 
     if (clearnetUri != null) {
       try {
-        return HttpOverrides.runZoned(
-          () async {
-            return await _make(
-              method: RequestMethod.put,
-              client: ioc.IOClient(),
-              uri: clearnetUri,
-              headers: headers,
-              body: body,
-            );
-          },
-        );
+        return HttpOverrides.runZoned(() async {
+          return await _make(
+            method: RequestMethod.put,
+            client: ioc.IOClient(),
+            uri: clearnetUri,
+            headers: headers,
+            body: body,
+          );
+        });
       } catch (_) {
         // we weren't able to get a response:
         rethrow;
@@ -375,16 +369,14 @@ class ProxyWrapper {
 
     if (clearnetUri != null) {
       try {
-        return HttpOverrides.runZoned(
-          () async {
-            return await _make(
-              method: RequestMethod.delete,
-              client: ioc.IOClient(),
-              uri: clearnetUri,
-              headers: headers,
-            );
-          },
-        );
+        return HttpOverrides.runZoned(() async {
+          return await _make(
+            method: RequestMethod.delete,
+            client: ioc.IOClient(),
+            uri: clearnetUri,
+            headers: headers,
+          );
+        });
       } catch (_) {
         // we weren't able to get a response:
         rethrow;

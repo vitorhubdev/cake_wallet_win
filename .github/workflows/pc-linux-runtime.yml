@@ -1,0 +1,93 @@
+name: Verify Linux AppImage runtimes
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      build:
+        required: true
+        type: string
+      source_commit:
+        required: false
+        type: string
+        default: ''
+      harness_commit:
+        required: false
+        type: string
+        default: ''
+      artifact_run_id:
+        required: false
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+jobs:
+  runtime:
+    name: AppImage ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu-24-04, ubuntu-26-04, fedora-44, fedora-45, archlinux-base-20261101-0-620205]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.harness_commit || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-Linux-distribution
+          path: dist
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify exact distribution and resolve pinned runtime image
+        id: runtime
+        env:
+          IMAGE: ${{ matrix.image }}
+          EXPECTED_SOURCE: ${{ inputs.source_commit || github.sha }}
+          EXPECTED_HARNESS: ${{ inputs.harness_commit || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HARNESS"
+          (cd dist && sha256sum --check SHA256SUMS-linux.txt)
+          chmod 755 dist/*.AppImage
+          python3 - <<'PY'
+          import json,os,pathlib,re
+          assert re.fullmatch(r'[0-9a-f]{40}',os.environ['EXPECTED_SOURCE'])
+          data=json.loads(pathlib.Path('scripts/pc/linux-runtime-images.json').read_text())
+          image=data[os.environ['IMAGE']]['reference']
+          assert '@sha256:' in image and '\n' not in image
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('base='+image+'\n')
+          PY
+      - name: Prepare distribution runtime without host-wallet mounts
+        env:
+          BASE_IMAGE: ${{ steps.runtime.outputs.base }}
+        run: docker build --pull --build-arg "BASE_IMAGE=$BASE_IMAGE" -t cake-pc-runtime -f scripts/pc/runtime/Dockerfile scripts/pc/runtime
+      - name: Verify isolated keyring, visible window, profile exclusion and native libraries
+        env:
+          PC_VERSION: ${{ inputs.version }}
+          PC_BUILD: ${{ inputs.build }}
+          PC_SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
+        run: |
+          set -euo pipefail
+          # Docker prepends noexec to tmpfs options. Only this disposable test
+          # volume is executable; privilege, host mounts and network stay restricted.
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,exec,mode=1777,size=1g \
+            -e GITHUB_ACTIONS=true -e RUNNER_ENVIRONMENT=github-hosted \
+            -e PC_VERSION -e PC_BUILD -e PC_SOURCE_COMMIT \
+            -v "$PWD:/source:ro" -v "$PWD/dist:/dist:ro" \
+            cake-pc-runtime "/dist/CakeWalletPC-Linux-x64-$PC_VERSION-$PC_BUILD.AppImage" \
+            2>&1 | tee linux-runtime-evidence.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pc-runtime-${{ matrix.image }}
+          path: linux-runtime-evidence.txt
+          if-no-files-found: ignore
+          retention-days: 14

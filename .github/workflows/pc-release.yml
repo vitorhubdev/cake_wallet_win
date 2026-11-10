@@ -27,11 +27,11 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor 4f792ca4a9981961bdc368ad34ba4c8d40c928b1 HEAD
+          git merge-base --is-ancestor d803aecf9de21461c7459c974ce5e3f2d92b70ed HEAD
           build=$((1000 + RUN_NUMBER))
           test "$build" -lt 65535
           echo "build=$build" >> "$GITHUB_OUTPUT"
-          echo "Cake Wallet PC 6.5.2+$build; upstream tag v6.5.2 is an ancestor." >> "$GITHUB_STEP_SUMMARY"
+          echo "Cake Wallet PC 6.5.3+$build; upstream tag v6.5.3 is an ancestor." >> "$GITHUB_STEP_SUMMARY"
   linux-native:
     uses: ./.github/workflows/pc-native-linux.yml
   windows-native:
@@ -94,7 +94,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     env:
-      PC_VERSION: '6.5.2'
+      PC_VERSION: '6.5.3'
       PC_BUILD: ${{ needs.identity.outputs.build }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/build/cargo-target
     steps:
@@ -157,6 +157,18 @@ jobs:
             ~/.cargo/git
           key: pc-rust-${{ runner.os }}-v1-${{ hashFiles('pubspec_overrides.yaml') }}
           restore-keys: pc-rust-${{ runner.os }}-v1-
+      - name: Verify packaging boundaries and non-replaying HTTP transport
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/pc/test_package_appimage.py
+          mkdir -p "$RUNNER_TEMP/pc-transport-tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout "$RUNNER_TEMP/pc-transport-tls/key.pem" \
+            -out "$RUNNER_TEMP/pc-transport-tls/cert.pem" \
+            -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' >/dev/null 2>&1
+          dart tool/pc_transport_checks.dart "$RUNNER_TEMP/pc-transport-tls/cert.pem" "$RUNNER_TEMP/pc-transport-tls/key.pem"
       - name: Deterministic concurrency and synchronization regressions
         shell: bash
         run: dart tool/windows_stability_checks.dart
@@ -304,6 +316,7 @@ jobs:
           set -euo pipefail
           xvfb-run -a python3 scripts/pc/smoke_linux.py build/linux/x64/release/bundle/cake-wallet-pc
           python3 scripts/pc/package_linux.py --version "$PC_VERSION" --build "$PC_BUILD"
+          python3 scripts/pc/package_appimage.py --version "$PC_VERSION" --build "$PC_BUILD"
           dbus-run-session -- bash scripts/pc/install_linux_test.sh "dist/CakeWalletPC-Linux-x64-$PC_VERSION-$PC_BUILD.deb"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -321,9 +334,15 @@ jobs:
             build/integration_test_screenshots/
           if-no-files-found: ignore
           retention-days: 7
+  linux-runtimes:
+    needs: [identity, desktop]
+    uses: ./.github/workflows/pc-linux-runtime.yml
+    with:
+      version: '6.5.3'
+      build: ${{ needs.identity.outputs.build }}
   publish:
     name: Publish only after both desktop installers pass
-    needs: [identity, desktop, linux-native]
+    needs: [identity, desktop, linux-native, linux-runtimes]
     if: github.repository == 'vitorhubdev/cake_wallet_win' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -350,18 +369,18 @@ jobs:
           python3 - <<'PY'
           import os,pathlib
           b=os.environ['PC_BUILD']
-          expected={f'CakeWalletPC-Windows-x64-6.5.2-{b}-Setup.exe',f'CakeWalletPC-Windows-x64-6.5.2-{b}.zip',f'CakeWalletPC-Linux-x64-6.5.2-{b}.deb',f'CakeWalletPC-Linux-x64-6.5.2-{b}.tar.gz'}
+          expected={f'CakeWalletPC-Windows-x64-6.5.3-{b}-Setup.exe',f'CakeWalletPC-Windows-x64-6.5.3-{b}.zip',f'CakeWalletPC-Linux-x64-6.5.3-{b}.deb',f'CakeWalletPC-Linux-x64-6.5.3-{b}.tar.gz',f'CakeWalletPC-Linux-x64-6.5.3-{b}.AppImage'}
           rows=pathlib.Path('SHA256SUMS.txt').read_text().splitlines()
-          assert len(rows)==4 and {r.split('  ',1)[1] for r in rows}==expected
+          assert len(rows)==5 and {r.split('  ',1)[1] for r in rows}==expected
           for name in expected: assert pathlib.Path(name).stat().st_size>1000000
           PY
           sha256sum --check SHA256SUMS.txt
           cd ..
-          tag="pc-v6.5.2-$PC_BUILD"
-          printf '# Cake Wallet PC 6.5.2 — build %s\n\n' "$PC_BUILD" > release-notes.md
+          tag="pc-v6.5.3-$PC_BUILD"
+          printf '# Cake Wallet PC 6.5.3 — build %s\n\n' "$PC_BUILD" > release-notes.md
           printf 'Community fork for Windows x64 and Linux x86-64. Not an official Cake Labs release.\n\n' >> release-notes.md
           cat docs/builds/CAKE_WALLET_PC.md >> release-notes.md
           printf '\n\nSource: `%s`\nCI: https://github.com/%s/actions/runs/%s\n' "$BUILD_COMMIT" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> release-notes.md
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$BUILD_COMMIT" --draft --prerelease --title "Cake Wallet PC 6.5.2 — Windows + Linux — build $PC_BUILD" --notes-file release-notes.md
-          gh release upload "$tag" dist/*-Setup.exe dist/*.zip dist/*.deb dist/*.tar.gz dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$BUILD_COMMIT" --draft --prerelease --title "Cake Wallet PC 6.5.3 — Windows + Linux — build $PC_BUILD" --notes-file release-notes.md
+          gh release upload "$tag" dist/*-Setup.exe dist/*.zip dist/*.deb dist/*.tar.gz dist/*.AppImage dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
           gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"

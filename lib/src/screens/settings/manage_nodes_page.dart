@@ -10,6 +10,7 @@ import 'package:cake_wallet/utils/show_pop_up.dart';
 import 'package:cake_wallet/view_model/dashboard/dashboard_view_model.dart';
 import 'package:cake_wallet/view_model/node_list/node_list_view_model.dart';
 import 'package:cw_core/node.dart';
+import 'package:cake_wallet/utils/node_display_address.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -30,8 +31,15 @@ class _ManageNodesPageState extends State<ManageNodesPage> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(milliseconds: 300))
-        .then((_) => widget.nodeListViewModel.speedTestNodes());
+    Future.delayed(const Duration(milliseconds: 300)).then((_) async {
+      if (mounted) await widget.nodeListViewModel.speedTestNodes();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.nodeListViewModel.cancelSpeedTest();
+    super.dispose();
   }
 
   @override
@@ -47,24 +55,26 @@ class _ManageNodesPageState extends State<ManageNodesPage> {
           children: [
             Observer(
               builder: (_) => ModernButton(
-                  size: 36,
-                  icon: widget.nodeListViewModel.isTestingNodeSpeed
-                      ? CupertinoActivityIndicator()
-                      : Icon(Icons.refresh),
-                  semanticLabel: S.of(context).test_node_speeds,
-                  onPressed: () => widget.nodeListViewModel.speedTestNodes()),
+                size: 36,
+                icon: widget.nodeListViewModel.isTestingNodeSpeed
+                    ? CupertinoActivityIndicator()
+                    : Icon(Icons.refresh),
+                semanticLabel: S.of(context).test_node_speeds,
+                onPressed: () => widget.nodeListViewModel.speedTestNodes(),
+              ),
             ),
             ModernButton(
-                size: 36,
-                icon: Icon(Icons.add),
-                semanticLabel: S.of(context).add_new_node,
-                onPressed: () async {
-                  final res = await Navigator.of(context)
-                      .pushNamed(widget.isPow ? Routes.newPowNode : Routes.newNode);
-                  if (res != null && res is Node) {
-                    widget.nodeListViewModel.nodes.add(res);
-                  }
-                })
+              size: 36,
+              icon: Icon(Icons.add),
+              semanticLabel: S.of(context).add_new_node,
+              onPressed: () async {
+                final res = await Navigator.of(context)
+                    .pushNamed(widget.isPow ? Routes.newPowNode : Routes.newNode);
+                if (res != null && res is Node) {
+                  widget.nodeListViewModel.nodes.add(res);
+                }
+              },
+            ),
           ],
         ),
       ),
@@ -73,27 +83,32 @@ class _ManageNodesPageState extends State<ManageNodesPage> {
         message: S.of(context).nodes_desc,
         title: S.of(context).nodes,
         bottomWidget: Observer(
-            builder: (_) => NodeListRow(
-                // vertical: 0,
-                // horizontal: 0,
-                node: widget.nodeListViewModel.currentNode,
-                speed: widget.nodeListViewModel.nodeSpeedFor(widget.nodeListViewModel.currentNode),
-                onEditComplete: (res) async {
-                  if (res != null && res is Node) {
-                    widget.nodeListViewModel.nodes.removeWhere((item) => item.id == res.id);
-                    widget.nodeListViewModel.nodes.add(res);
-                  }
-                },
-                onTap: () {},
-                isSelected: true,
-                isPow: widget.isPow)),
+          builder: (_) => NodeListRow(
+            // vertical: 0,
+            // horizontal: 0,
+            node: widget.nodeListViewModel.currentNode,
+            speed: widget.nodeListViewModel.nodeSpeedFor(widget.nodeListViewModel.currentNode),
+            health: widget.nodeListViewModel.healthFor(widget.nodeListViewModel.currentNode),
+            latencyMs: widget.nodeListViewModel.latencyFor(widget.nodeListViewModel.currentNode),
+            onEditComplete: (res) async {
+              if (res != null && res is Node) {
+                widget.nodeListViewModel.nodes.removeWhere((item) => item.id == res.id);
+                widget.nodeListViewModel.nodes.add(res);
+              }
+            },
+            onTap: () {},
+            isSelected: true,
+            isPow: widget.isPow,
+          ),
+        ),
       ),
       content: Column(
         children: [
           Container(
             decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(18)),
+              color: Theme.of(context).colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(18),
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: Observer(
@@ -120,10 +135,13 @@ class _ManageNodesPageState extends State<ManageNodesPage> {
                             isSelected: false,
                             isPow: widget.isPow,
                             speed: widget.nodeListViewModel.nodeSpeedFor(node),
+                            health: widget.nodeListViewModel.healthFor(node),
+                            latencyMs: widget.nodeListViewModel.latencyFor(node),
                             onEditComplete: (res) async {
                               if (res != null && res is Node) {
-                                widget.nodeListViewModel.nodes
-                                    .removeWhere((item) => item.id == res.id);
+                                widget.nodeListViewModel.nodes.removeWhere(
+                                  (item) => item.id == res.id,
+                                );
                                 widget.nodeListViewModel.nodes.add(res);
                               }
                             },
@@ -133,8 +151,9 @@ class _ManageNodesPageState extends State<ManageNodesPage> {
                                 builder: (BuildContext context) {
                                   return AlertWithTwoActions(
                                     alertTitle: S.of(context).change_current_node_title,
-                                    alertContent:
-                                        widget.nodeListViewModel.getAlertContent(node.uriRaw),
+                                    alertContent: widget.nodeListViewModel.getAlertContent(
+                                      displayNodeAddress(node.uri) ?? '',
+                                    ),
                                     leftButtonText: S.of(context).cancel,
                                     rightButtonText: S.of(context).change,
                                     actionLeftButton: () => Navigator.of(context).pop(),

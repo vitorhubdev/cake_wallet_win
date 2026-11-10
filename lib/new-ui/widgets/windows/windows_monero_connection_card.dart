@@ -1,3 +1,4 @@
+import 'package:cake_wallet/new-ui/widgets/windows/pc_monero_diagnostics.dart';
 import 'package:cake_wallet/core/sync_status_title.dart';
 import 'package:cake_wallet/generated/i18n.dart';
 import 'package:cake_wallet/routes.dart';
@@ -11,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 
 /// Keeps the selected Monero node and real sync state visible on desktop.
-/// This widget performs no network requests and never displays node credentials.
+/// Probes are user-triggered; node credentials and wallet material are never displayed.
 class WindowsMoneroConnectionCard extends StatelessWidget {
   const WindowsMoneroConnectionCard({required this.dashboardViewModel, super.key});
 
@@ -28,14 +29,20 @@ class WindowsMoneroConnectionCard extends StatelessWidget {
       final isMonero = wallet.type == WalletType.monero;
       Node? node;
       try {
-        node = dashboardViewModel.settingsStore.getCurrentNode(wallet.type, chainId: wallet.chainId);
+        node = dashboardViewModel.settingsStore.getCurrentNode(
+          wallet.type,
+          chainId: wallet.chainId,
+        );
       } catch (_) {
         // A removed or invalid configured node must not break the dashboard.
       }
       String? endpoint;
-      try { endpoint = displayNodeAddress(node?.uri); } catch (_) {}
+      try {
+        endpoint = displayNodeAddress(node?.uri);
+      } catch (_) {}
       final address = endpoint ?? S.of(context).sync_not_connected;
-      final networkName = isMonero ? 'Monero · XMR'
+      final networkName = isMonero
+          ? 'Monero · XMR'
           : '${dashboardViewModel.currentChain?.name ?? 'EVM'} · ${wallet.currency.title}';
       final title = syncStatusTitle(status, dashboardViewModel.settingsStore.syncStatusDisplayMode);
       final isFailure =
@@ -51,7 +58,8 @@ class WindowsMoneroConnectionCard extends StatelessWidget {
         children: [
           ExcludeSemantics(
             child: CakeImageWidget(
-              imageUrl: isMonero ? 'assets/new-ui/crypto_full_icons/monero.svg'
+              imageUrl: isMonero
+                  ? 'assets/new-ui/crypto_full_icons/monero.svg'
                   : 'assets/new-ui/crypto_full_icons/ethereum.svg',
               width: 40,
               height: 40,
@@ -149,6 +157,13 @@ class WindowsMoneroConnectionCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (isMonero)
+              PcMoneroDiagnostics(
+                node: node,
+                status: status,
+                walletIdentity: wallet,
+                testnet: wallet.isTestnet,
+              ),
             if (status is SyncingSyncStatus && progress.isFinite) ...[
               const SizedBox(height: 14),
               ClipRRect(

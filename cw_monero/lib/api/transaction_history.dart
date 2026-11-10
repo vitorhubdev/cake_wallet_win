@@ -18,9 +18,7 @@ import 'package:mutex/mutex.dart';
 
 String _formatTransactionError(String error) {
   final message = error.replaceAll(
-    RegExp(
-      r'(?:[A-Za-z]:)?[\\/][^\s:]*\.(?:c|cc|cpp|cxx|h|hpp|hxx):\d+:(?:[A-Za-z0-9_]+:)?\s*',
-    ),
+    RegExp(r'(?:[A-Za-z]:)?[\\/][^\s:]*\.(?:c|cc|cpp|cxx|h|hpp|hxx):\d+:(?:[A-Za-z0-9_]+:)?\s*'),
     '',
   );
   if (message.contains("RPC error")) {
@@ -97,22 +95,24 @@ Future<List<Transaction>> getAllTransactions() async {
       if (list
           .where((element) => element.accountIndex == i && element.isConfirmed == false)
           .isEmpty) {
-        dummyTxs.add(Transaction.dummy(
-          displayLabel: "",
-          description: "",
-          fee: 0,
-          confirmations: 0,
-          blockheight: 0,
-          accountIndex: i,
-          addressIndex: 0,
-          addressIndexList: [0],
-          paymentId: "",
-          amount: fullBalance - availBalance,
-          isSpend: false,
-          hash: "pending",
-          key: "",
-          txInfo: DummyTransaction(),
-        )..timeStamp = DateTime.now());
+        dummyTxs.add(
+          Transaction.dummy(
+            displayLabel: "",
+            description: "",
+            fee: 0,
+            confirmations: 0,
+            blockheight: 0,
+            accountIndex: i,
+            addressIndex: 0,
+            addressIndexList: [0],
+            paymentId: "",
+            amount: fullBalance - availBalance,
+            isSpend: false,
+            hash: "pending",
+            key: "",
+            txInfo: DummyTransaction(),
+          )..timeStamp = DateTime.now(),
+        );
       }
     }
   }
@@ -143,18 +143,20 @@ Future<Transaction> getTransaction(String txId) async {
   }
 }
 
-Future<PendingTransactionDescription> createTransactionSync(
-    {required String address,
-    required String paymentId,
-    required int priorityRaw,
-    String? amount,
-    int accountIndex = 0,
-    List<String> preferredInputs = const []}) async {
+Future<PendingTransactionDescription> createTransactionSync({
+  required String address,
+  required String paymentId,
+  required int priorityRaw,
+  String? amount,
+  int accountIndex = 0,
+  List<String> preferredInputs = const [],
+}) async {
   final amt = amount == null ? 0 : currentWallet!.amountFromString(amount);
 
   if (amount != null && amt == 0) {
     throw MoneroTransactionCreationException(
-        'Refusing to create a transaction with a zero amount: 0 is the sweep-all ');
+      'Refusing to create a transaction with a zero amount: 0 is the sweep-all ',
+    );
   }
 
   final waddr = currentWallet!.ffiAddress();
@@ -169,7 +171,8 @@ Future<PendingTransactionDescription> createTransactionSync(
   final paymentId_ = paymentId.toNativeUtf8();
   if (preferredInputs.isEmpty) {
     throw MoneroTransactionCreationException(
-        "No inputs provided, transaction cannot be constructed");
+      "No inputs provided, transaction cannot be constructed",
+    );
   }
 
   final preferredInputs_ = preferredInputs.join(monero.defaultSeparatorStr).toNativeUtf8();
@@ -178,21 +181,23 @@ Future<PendingTransactionDescription> createTransactionSync(
   final paymentIdAddr = paymentId_.address;
   final preferredInputsAddr = preferredInputs_.address;
   final spaddr = monero.defaultSeparator.address;
-  final pendingTxPtr = Pointer<Void>.fromAddress(await Isolate.run(() {
-    final tx =
-        monero_gen.MoneroC(DynamicLibrary.open(monero.libPath)).MONERO_Wallet_createTransaction(
-      Pointer.fromAddress(waddr),
-      Pointer.fromAddress(addraddr).cast(),
-      Pointer.fromAddress(paymentIdAddr).cast(),
-      amt,
-      1,
-      priorityRaw,
-      accountIndex,
-      Pointer.fromAddress(preferredInputsAddr).cast(),
-      Pointer.fromAddress(spaddr),
-    );
-    return tx.address;
-  }));
+  final pendingTxPtr = Pointer<Void>.fromAddress(
+    await Isolate.run(() {
+      final tx = monero_gen.MoneroC(DynamicLibrary.open(monero.libPath))
+          .MONERO_Wallet_createTransaction(
+            Pointer.fromAddress(waddr),
+            Pointer.fromAddress(addraddr).cast(),
+            Pointer.fromAddress(paymentIdAddr).cast(),
+            amt,
+            1,
+            priorityRaw,
+            accountIndex,
+            Pointer.fromAddress(preferredInputsAddr).cast(),
+            Pointer.fromAddress(spaddr),
+          );
+      return tx.address;
+    }),
+  );
   final Wallet2PendingTransaction pendingTx = MoneroPendingTransaction(pendingTxPtr);
   calloc.free(address_);
   calloc.free(paymentId_);
@@ -224,12 +229,13 @@ Future<PendingTransactionDescription> createTransactionSync(
   );
 }
 
-Future<PendingTransactionDescription> createTransactionMultDest(
-    {required List<MoneroOutput> outputs,
-    required String paymentId,
-    required int priorityRaw,
-    int accountIndex = 0,
-    List<String> preferredInputs = const []}) async {
+Future<PendingTransactionDescription> createTransactionMultDest({
+  required List<MoneroOutput> outputs,
+  required String paymentId,
+  required int priorityRaw,
+  int accountIndex = 0,
+  List<String> preferredInputs = const [],
+}) async {
   final dstAddrs = outputs.map((e) => e.address).toList();
   final amounts = outputs.map((e) => currentWallet!.amountFromString(e.amount)).toList();
 
@@ -240,17 +246,19 @@ Future<PendingTransactionDescription> createTransactionMultDest(
     monero.Wallet_synchronized(Pointer.fromAddress(waddr));
   });
 
-  final txptr = Pointer<Void>.fromAddress(await Isolate.run(() {
-    return monero.Wallet_createTransactionMultDest(
-      Pointer.fromAddress(waddr),
-      dstAddr: dstAddrs,
-      isSweepAll: false,
-      amounts: amounts,
-      mixinCount: 0,
-      pendingTransactionPriority: priorityRaw,
-      subaddr_account: accountIndex,
-    ).address;
-  }));
+  final txptr = Pointer<Void>.fromAddress(
+    await Isolate.run(() {
+      return monero.Wallet_createTransactionMultDest(
+        Pointer.fromAddress(waddr),
+        dstAddr: dstAddrs,
+        isSweepAll: false,
+        amounts: amounts,
+        mixinCount: 0,
+        pendingTransactionPriority: priorityRaw,
+        subaddr_account: accountIndex,
+      ).address;
+    }),
+  );
 
   final Wallet2PendingTransaction tx = MoneroPendingTransaction(txptr);
 
@@ -271,44 +279,53 @@ Future<PendingTransactionDescription> createTransactionMultDest(
 Future<String?> commitTransactionFromPointerAddress({required int address, required bool useUR}) =>
     commitTransaction(tx: MoneroPendingTransaction(Pointer.fromAddress(address)), useUR: useUR);
 
-Future<String?> commitTransaction(
-    {required Wallet2PendingTransaction tx, required bool useUR}) async {
-  final txCommit = useUR
-      ? tx.commitUR(120)
-      : await Isolate.run(() {
-          monero.PendingTransaction_commit(
-            Pointer.fromAddress(tx.ffiAddress()),
-            filename: '',
-            overwrite: false,
-          );
-          return null;
-        });
+// Keep the isolate closure's context primitive-only. Capturing the wrapper
+// object can pull unrelated unsendable native/callback state into Isolate.run.
+Future<bool> _commitNativeTransaction(int pointerAddress) => Isolate.run(
+  () => monero.PendingTransaction_commit(
+    Pointer.fromAddress(pointerAddress),
+    filename: '',
+    overwrite: false,
+  ),
+);
 
-  String? error = (() {
-    final status = tx.status();
-    if (status == 0) {
-      return null;
+Future<String?> commitTransaction({required Wallet2PendingTransaction tx, required bool useUR}) {
+  final owner = currentWallet?.ffiAddress();
+  final address = tx.ffiAddress();
+  // Native persistence, closure and wallet-switch barriers already use this
+  // queue. Never race a broadcast with a write/close of its owning wallet.
+  return walletStoreQueue.run(() async {
+    if (owner == null || owner == 0 || currentWallet?.ffiAddress() != owner) {
+      throw StateError('Monero wallet changed before transaction submission.');
     }
-    return tx.errorString();
-  })();
-  if (error == null) {
-    error = (() {
-      final status = currentWallet!.status();
-      if (status == 0) {
-        return null;
+    String? exported;
+    if (useUR) {
+      exported = tx.commitUR(120);
+    } else {
+      final committed = await _commitNativeTransaction(address);
+      if (!committed) {
+        final detail = tx.errorString();
+        throw CreationTransactionException(
+          message: detail.isEmpty
+              ? 'Native Monero rejected transaction submission.'
+              : _formatTransactionError(detail),
+        );
       }
-      return currentWallet!.errorString();
-    })();
-  }
-  if (error != null && error != "no tx keys found for this txid") {
-    throw CreationTransactionException(message: _formatTransactionError(error));
-  }
-  unawaited(() async {
-    await storeInBackground(force: true);
-    await Future.delayed(Duration(seconds: 5));
-    await storeInBackground(force: true);
-  }());
-  return Future.value(txCommit);
+    }
+    String? error = tx.status() == 0 ? null : tx.errorString();
+    // A general wallet status can describe a concurrent refresh error, not
+    // this broadcast. Use the explicit commit result and this pending object.
+    if (error != null && error != 'no tx keys found for this txid') {
+      throw CreationTransactionException(message: _formatTransactionError(error));
+    }
+    unawaited(() async {
+      if (currentWallet?.ffiAddress() != owner) return;
+      await storeInBackground(force: true);
+      await Future<void>.delayed(const Duration(seconds: 5));
+      if (currentWallet?.ffiAddress() == owner) await storeInBackground(force: true);
+    }());
+    return exported;
+  });
 }
 
 class Transaction {
@@ -317,16 +334,11 @@ class Transaction {
     accountIndex: accountIndex,
     addressIndex: addressIndex,
   );
-  late final String address = getAddress(
-    accountIndex: accountIndex,
-    addressIndex: addressIndex,
-  );
+  late final String address = getAddress(accountIndex: accountIndex, addressIndex: addressIndex);
   late final List<String> addressList = List.generate(
-      addressIndexList.length,
-      (index) => getAddress(
-            accountIndex: accountIndex,
-            addressIndex: addressIndexList[index],
-          ));
+    addressIndexList.length,
+    (index) => getAddress(accountIndex: accountIndex, addressIndex: addressIndexList[index]),
+  );
   final String description;
   final int fee;
   final int confirmations;
@@ -368,39 +380,40 @@ class Transaction {
   // List<Transfer> transfers = [];
   // final int txIndex;
   final Wallet2TransactionInfo txInfo;
-  Transaction({
-    required this.txInfo,
-  })  : displayLabel = txInfo.label(),
-        hash = txInfo.hash(),
-        timeStamp = DateTime.fromMillisecondsSinceEpoch(
-          txInfo.timestamp() * 1000,
-        ),
-        isSpend = txInfo.direction() == monero.TransactionInfo_Direction.Out.index,
-        amount = txInfo.amount(),
-        paymentId = txInfo.paymentId(),
-        accountIndex = txInfo.subaddrAccount(),
-        addressIndex = int.tryParse(txInfo.subaddrIndex().split(", ")[0]) ?? 0,
-        addressIndexList =
-            txInfo.subaddrIndex().split(", ").map((e) => int.tryParse(e) ?? 0).toList(),
-        blockheight = txInfo.blockHeight(),
-        confirmations = txInfo.confirmations(),
-        fee = txInfo.fee(),
-        description = txInfo.description(),
-        key = getTxKey(txInfo.hash());
+  Transaction({required this.txInfo})
+    : displayLabel = txInfo.label(),
+      hash = txInfo.hash(),
+      timeStamp = DateTime.fromMillisecondsSinceEpoch(txInfo.timestamp() * 1000),
+      isSpend = txInfo.direction() == monero.TransactionInfo_Direction.Out.index,
+      amount = txInfo.amount(),
+      paymentId = txInfo.paymentId(),
+      accountIndex = txInfo.subaddrAccount(),
+      addressIndex = int.tryParse(txInfo.subaddrIndex().split(", ")[0]) ?? 0,
+      addressIndexList = txInfo
+          .subaddrIndex()
+          .split(", ")
+          .map((e) => int.tryParse(e) ?? 0)
+          .toList(),
+      blockheight = txInfo.blockHeight(),
+      confirmations = txInfo.confirmations(),
+      fee = txInfo.fee(),
+      description = txInfo.description(),
+      key = getTxKey(txInfo.hash());
 
-  Transaction.dummy(
-      {required this.displayLabel,
-      required this.description,
-      required this.fee,
-      required this.confirmations,
-      required this.blockheight,
-      required this.accountIndex,
-      required this.addressIndexList,
-      required this.addressIndex,
-      required this.paymentId,
-      required this.amount,
-      required this.isSpend,
-      required this.hash,
-      required this.key,
-      required this.txInfo});
+  Transaction.dummy({
+    required this.displayLabel,
+    required this.description,
+    required this.fee,
+    required this.confirmations,
+    required this.blockheight,
+    required this.accountIndex,
+    required this.addressIndexList,
+    required this.addressIndex,
+    required this.paymentId,
+    required this.amount,
+    required this.isSpend,
+    required this.hash,
+    required this.key,
+    required this.txInfo,
+  });
 }

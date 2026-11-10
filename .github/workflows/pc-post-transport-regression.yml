@@ -1,0 +1,83 @@
+name: Verify POST no-replay and IPv6 fallback on desktops
+on:
+  push:
+    branches: [pc-v6.5.3-linux-candidate-20261108]
+    paths:
+      - cw_core/lib/utils/prefer_ipv6_connection.dart
+      - cw_core/lib/utils/proxy_wrapper.dart
+      - cw_core/test/pc_post_no_replay_test.dart
+      - cw_core/test/proxy_wrapper_prefer_ipv6_test.dart
+      - .github/workflows/pc-post-transport-regression.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  post-transport:
+    name: POST semantics ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - name: Set short Windows dependency paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          git config --global core.symlinks true
+          'PUB_CACHE=C:\pub-cache' >> $env:GITHUB_ENV
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+          pub-cache: 'false'
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: runner.os == 'Windows'
+        with:
+          path: |
+            C:\pub-cache\git\cache
+            C:\pub-cache\hosted
+            C:\pub-cache\hosted-hashes
+            scripts/.cache/windows
+          key: windows-deps-v2-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: windows-deps-v2-
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: runner.os == 'Linux'
+        with:
+          path: |
+            ~/.pub-cache/git/cache
+            ~/.pub-cache/hosted
+            ~/.pub-cache/hosted-hashes
+            scripts/.cache/windows
+          key: pc-linux-deps-v1-${{ hashFiles('pubspec_overrides.yaml', '**/pubspec.yaml', 'scripts/windows/prepare_dependencies.py') }}
+          restore-keys: pc-linux-deps-v1-
+      - name: Resolve pinned source dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A focused HTTP test does not need native Monero/MWEB binaries.
+          # Prepare the exact pinned Dart package archives without invoking the
+          # production build's native-artifact integrity gate.
+          python3 - <<'PY'
+          from scripts.windows.prepare_dependencies import DEPENDENCIES, ROOT, download, extract_sources
+          for name, (url, digest) in DEPENDENCIES.items():
+              extract_sources(download(url, digest), ROOT / 'scripts' / name)
+          target = ROOT / 'cw_core' / 'pubspec_overrides.yaml'
+          overrides = (ROOT / 'pubspec_overrides.yaml').read_bytes()
+          target.unlink(missing_ok=True)
+          target.write_bytes(overrides)
+          PY
+          cd cw_core
+          flutter pub get
+      - name: Run the actual Dart/Flutter POST no-replay tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd cw_core
+          flutter test test/pc_post_no_replay_test.dart test/proxy_wrapper_prefer_ipv6_test.dart --reporter expanded

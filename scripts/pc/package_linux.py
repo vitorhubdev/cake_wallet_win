@@ -41,7 +41,7 @@ def verify_bundle(bundle: Path) -> None:
 
 def main() -> None:
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version',default='6.5.2')
+    parser.add_argument('--version',default='6.5.3')
     parser.add_argument('--build',required=True,type=int)
     args=parser.parse_args()
     if not re.fullmatch(r'\d+\.\d+\.\d+',args.version) or not 0 < args.build < 65535:
@@ -84,7 +84,7 @@ Homepage: https://github.com/vitorhubdev/cake_wallet_win
 Description: Cake Wallet PC community desktop wallet
  Linux x86-64 build for Ubuntu 24.04-compatible desktop runtimes, with real
  system keyring support and a separate profile. Not compatible with Ubuntu
- 22.04. Based on Cake Wallet 6.5.2. Not an official Cake Labs release.
+ 22.04. Based on Cake Wallet 6.5.3. Not an official Cake Labs release.
 '''
         (stage/'DEBIAN/control').write_text(control)
         for path in stage.rglob('*'):

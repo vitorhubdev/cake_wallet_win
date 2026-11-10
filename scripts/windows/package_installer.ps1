@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '6.5.2',
+    [string]$Version = '6.5.3',
     [ValidateRange(1, 65535)]
     [int]$BuildNumber = 1,
     [string]$BundlePath = 'build\windows\x64\runner\Release',

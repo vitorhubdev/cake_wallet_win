@@ -1,0 +1,116 @@
+{
+  "recordedAtUtc": "2026-11-09T23:36:50.683158+00:00",
+  "baseCommit": "373e326c74d74ad4e7b90fda135a72fde6fffe58",
+  "upstreamVersion": "6.5.3",
+  "localEnvironment": "Ubuntu NAS VM; Dart 3.13.7; pinned socks5_proxy 27ad7c2",
+  "healthAndSubmissionChecks": {
+    "status": "passed",
+    "checks": 66,
+    "publicNodeRequests": 0,
+    "paymentsSubmitted": 0
+  },
+  "proxyAndTLSChecks": {
+    "status": "passed",
+    "checks": 35,
+    "externalRequests": 0,
+    "paymentsSubmitted": 0
+  },
+  "priorStabilityRegressions": {
+    "status": "passed",
+    "checks": 27,
+    "networkOperations": false
+  },
+  "publicNodeObservations": {
+    "observedAtUtc": "2026-11-09T23:33:49.018163Z",
+    "location": "User Ubuntu NAS VM; this does not measure another computer or future availability.",
+    "method": "get_info only; TLS verified; no addresses, balances, external-IP lookups or payments",
+    "results": [
+      {
+        "host": "node.monerodevs.org",
+        "port": 18089,
+        "state": "ready",
+        "medianRpcMs": 134,
+        "jitterMs": 368,
+        "samples": 3,
+        "httpStatus": 200,
+        "reportedHeight": 3802928,
+        "tls": true
+      },
+      {
+        "host": "node.sethforprivacy.com",
+        "port": 443,
+        "state": "ready",
+        "medianRpcMs": 142,
+        "jitterMs": 366,
+        "samples": 3,
+        "httpStatus": 200,
+        "reportedHeight": 3802928,
+        "tls": true
+      },
+      {
+        "host": "xmr-node.cakewallet.com",
+        "port": 18081,
+        "state": "ready",
+        "medianRpcMs": 516,
+        "jitterMs": 451,
+        "samples": 3,
+        "httpStatus": 200,
+        "reportedHeight": 3802928,
+        "tls": true
+      },
+      {
+        "host": "selsta1.featherwallet.net",
+        "port": 18081,
+        "state": "connectionRefused",
+        "medianRpcMs": null,
+        "jitterMs": null,
+        "samples": 0,
+        "httpStatus": null,
+        "reportedHeight": null,
+        "tls": true
+      },
+      {
+        "host": "node3.monerodevs.org",
+        "port": 18089,
+        "state": "ready",
+        "medianRpcMs": 215,
+        "jitterMs": 434,
+        "samples": 3,
+        "httpStatus": 200,
+        "reportedHeight": 3802928,
+        "tls": true
+      },
+      {
+        "host": "xmr.stormycloud.org",
+        "port": 18089,
+        "state": "tlsError",
+        "medianRpcMs": null,
+        "jitterMs": null,
+        "samples": 0,
+        "httpStatus": null,
+        "reportedHeight": null,
+        "tls": true
+      },
+      {
+        "host": "node2.monerodevs.org",
+        "port": 18089,
+        "state": "timeout",
+        "medianRpcMs": null,
+        "jitterMs": null,
+        "samples": 0,
+        "httpStatus": null,
+        "reportedHeight": null,
+        "tls": true
+      }
+    ]
+  },
+  "notEstablished": [
+    "new full Flutter builds and installers until matching CI succeeds",
+    "mainnet payments",
+    "physical Trezor/Ledger",
+    "all private proxies",
+    "permanent server availability",
+    "other machines latency",
+    "download Mbps"
+  ]
+}

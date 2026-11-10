@@ -1,23 +1,23 @@
 # Cake Wallet PC — Windows and Linux
 
-Community desktop fork of Cake Wallet 6.5.2, focused on Monero and Ethereum.
+Community desktop fork of Cake Wallet 6.5.3, focused on Monero and Ethereum.
 This is not an official Cake Labs distribution. There are no Android, iOS or
 macOS binaries in this fork's PC releases.
 
 ## Downloads and installation
 
-Windows x64: use `CakeWalletPC-Windows-x64-6.5.2-<build>-Setup.exe`. The ZIP is
+Windows x64: use `CakeWalletPC-Windows-x64-6.5.3-<build>-Setup.exe`. The ZIP is
 portable application packaging: extract the complete directory and keep the
 DLLs and `data` folder alongside `CakeWallet.exe`. User data is not stored beside
 the executable. The installer is unsigned; no commercial signing certificate
 is included in the repository.
 
 Linux x64: the `.deb` provides the application, launcher, desktop entry and icon.
-Install with `sudo apt install ./CakeWalletPC-Linux-x64-6.5.2-<build>.deb`.
+Install with `sudo apt install ./CakeWalletPC-Linux-x64-6.5.3-<build>.deb`.
 The `.tar.gz` contains the same complete application bundle: extract it and run
 `./cake-wallet-pc`. The launcher supplies its own library directory; it does not
 require Flatpak or FUSE. A desktop Secret Service (for example GNOME Keyring),
-GTK3 and the dependencies listed by the DEB are needed. The tested baseline is
+GTK3 and the dependencies listed by the DEB are needed. The configured build baseline is
 Ubuntu 24.04 x86-64, with glibc >= 2.39 and libstdc++ >= 13.2. Compatible
 Ubuntu 24.04 derivatives must provide the same runtime dependencies. Ubuntu
 22.04, ARM, musl/Alpine and 32-bit builds are not supported by these binaries.
@@ -35,7 +35,7 @@ identity, password, storage and desktop lifecycle gates remain mandatory.
 Flatpak is technically possible. It is not included in this release because
 sandbox permissions, USB hardware-wallet access and persistent keyring behavior
 need a separate validation effort; a Flatpak file would not automatically be
-more reliable. AppImage and Snap are not silently substituted for native builds.
+more reliable. Snap is not included. The new AppImage package is described separately below.
 
 Verify the exact files against `SHA256SUMS.txt`. Checksums detect accidental
 changes, not publisher authenticity. Build metadata records the full source
@@ -67,12 +67,13 @@ uses native Unicode paths.
 
 ## Changes in this PC version
 
-The pinned upstream tag is `v6.5.2`, commit
-`4f792ca4a9981961bdc368ad34ba4c8d40c928b1`. An ancestry comparison confirmed that
-the existing Windows fork already contains that commit; the former 6.5.0 binary
-label was stale. No upstream commits were applied twice. Existing improvements
-in amount handling, authentication, exception handling and chain integrations
-remain present. Additional later changes in the original fork are preserved.
+The pinned upstream tag is `v6.5.3`, commit
+`d803aecf9de21461c7459c974ce5e3f2d92b70ed`. Of the 45 commits after v6.5.2,
+18 were already ancestors of the previous PC release. This integration adds
+only the remaining history, preserving desktop-specific safety changes.
+The source candidate is not a tested release until the matching complete CI
+succeeds. The detailed review and full commit inventory are in
+`docs/audits/CAKE_PC_V653_REVIEW.md`.
 
 - Monero writes are awaited and serialized before backup; failed writes do not
   poison subsequent queue operations. The storage regression now uses the same
@@ -119,3 +120,82 @@ O QR de recebimento acompanha a rede selecionada. Envios com vários destinatár
 ## Desktop Monero error preservation
 
 Windows and Linux both preserve the original XMR opening error and existing files. A low initial height does not trigger automatic cache deletion. Ordinary opening or credential errors do not trigger seed extraction or selection of unrelated wallets. The existing mocked loading-service regression now runs on both desktop platforms; native wallet identity/storage and onboarding checks remain separate mandatory gates. These changes do not certify all rename or manual recovery flows.
+
+## AppImage: Ubuntu, Arch Linux and Fedora
+
+`CakeWalletPC-Linux-x64-6.5.3-<build>.AppImage` is built from the same verified
+Linux application bundle as the DEB. It does not use the official release's old
+Linux binaries or rename them to 6.5.3. Mark the AppImage executable, then run it.
+When FUSE is unavailable, its runtime supports `--appimage-extract-and-run`.
+
+The baseline remains x86-64 glibc >= 2.39 and libstdc++ >= 13.2. GTK3, a working
+Secret Service/keyring, graphics libraries and the desktop session are host
+prerequisites. Selected ABI-sensitive dependencies such as jsoncpp and SQLite
+are bundled with checksums and copyright notices. glibc, libstdc++ and graphics
+drivers are not copied into the AppImage. This is not a fully self-contained
+replacement for the operating system. Ubuntu 22.04, Alpine/musl and ARM are not
+supported by this build.
+
+The mandatory runtime matrix is Ubuntu 24.04, Ubuntu 26.04, Fedora 44, Fedora 45
+and a recorded Arch Linux snapshot. Base container images are digest-pinned;
+package repositories are updated during image creation and each run records its
+runtime. Arch is rolling, so one passing snapshot is not a permanent guarantee.
+
+Runtime tests run as an unprivileged user with no network and no real-wallet
+mounts. They verify source identity, private-library checksums, ELF dependencies,
+a real disposable Secret Service write/read/delete, a visible X11 window,
+Unicode profile paths and rejection of a second instance. CI extracts the
+AppImage rather than granting a FUSE device. Desktop FUSE mounting, Wayland,
+real GPU drivers, hardware wallets and mainnet payments require separate tests.
+These are configured gates, not a claim that an unfinished CI run has passed.
+
+DEB installation/uninstallation remains tested on Ubuntu. Arch and Fedora use
+the AppImage; do not install the DEB with distribution-conversion workarounds.
+The AppImage preserves the existing profile and keyring namespace, never
+redirects HOME, and never migrates or deletes an existing wallet automatically.
+
+## v6.5.3 integration safeguards
+
+IPv6 preference occurs while establishing a socket, before HTTP bytes are sent.
+An accepted POST is never replayed because its response failed or timed out.
+Direct HTTPS preserves hostname/certificate validation; an explicit pre-existing
+Monero certificate-bypass option is not enabled by default. Tor requests keep
+their original transport and never acquire a direct fallback.
+
+The optimized seed helper retains the old derivation semantics. Do not add new
+Unicode normalization to an existing wallet: it can change its identity. The
+52 upstream compatibility vectors are a mandatory regression gate. The updated
+BitBox package is pinned at `3d1c607f14c6d5bace2971ec4c10b5201053cc56` and checked
+against the actual resolved Pub lockfile, not only a requested dependency.
+
+## Monero diagnostics and stability update (2026-11-09)
+
+Node management now displays RPC latency in milliseconds (median of up to three
+samples), spread, the reported daemon height and explicit connection errors.
+A low latency never proves node honesty or wallet synchronization. Measurements
+are temporary and scoped to the node, credentials, proxy and wallet session;
+selection remains manual. At most three node probes run concurrently.
+
+HTTP 401/403/429, TLS/DNS errors, TCP refusal, proxy failure and timeout are
+separate states. HTTP 403 or a refused socket does not establish that an IP is
+banned. The application neither queries an external IP service nor attempts to
+evade a server's access policy. Retry-After is respected by the visible test.
+
+The dashboard has an explicit test button. It also reports observed scan
+progress in blocks/s, not Mbps; rate history is bounded and reset on wallet/node
+change, height rollback or sleep/resume gaps. Repeated unavailable native height
+samples invalidate a stale synced state instead of leaving it indefinitely green.
+
+Probes use bounded get_info JSON bodies, fixed Content-Length required by
+monerod, no redirects, strict TLS, and no wallet addresses/keys. SOCKS/Tor target
+resolution stays at the proxy. A stalled SOCKS/TLS probe closes its transport;
+it never stops the native wallet's synchronization.
+
+Monero confirmations share one submission per prepared object. Successful
+submission is retained, failures are not retried automatically, and UR/normal
+submission cannot race the same object. Native commits now honor the native
+boolean result and share the existing persistence/close barrier. Trezor's error
+path reads a Wallet error instead of casting a PendingTransaction pointer to
+UnsignedTransaction. No fee, amount, key derivation or restore-height value was
+changed. Synthetic and offline tests do not certify real mainnet transfers or
+physical hardware-wallet behavior.
