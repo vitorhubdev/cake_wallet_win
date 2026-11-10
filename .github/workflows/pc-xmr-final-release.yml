@@ -1,0 +1,165 @@
+name: Final Monero stability release validation
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-xmr-final-release.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pc-xmr-final-release-1009
+  cancel-in-progress: false
+jobs:
+  build-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      build: ${{ steps.build.outputs.build }}
+      source: ${{ steps.build.outputs.source }}
+      run: ${{ steps.build.outputs.run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 783bd28024008870331b76b517d74d06ec2cfd75
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove that the corrected test harness does not alter application code
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor db9f29dafe6393cfed3e64da8133f709c63864c5 HEAD
+          python3 - <<'PY'
+          import subprocess
+          paths=set(subprocess.check_output(['git','diff','--name-only','db9f29dafe6393cfed3e64da8133f709c63864c5','HEAD'],text=True).splitlines())
+          assert paths=={'.github/workflows/pc-linux-runtime.yml','scripts/pc/runtime/Dockerfile','scripts/pc/runtime/verify.py'},paths
+          PY
+          git diff --check db9f29dafe6393cfed3e64da8133f709c63864c5 HEAD
+      - name: Require all actual Windows/Linux wallet tests, native backends and installer builds
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib,subprocess,time
+          source='db9f29dafe6393cfed3e64da8133f709c63864c5'
+          run=42724858342
+          required={'identity','windows-native','linux-native / monero','Build and verify Windows x64','Build and verify Linux x64'}
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/vitorhubdev/cake_wallet_win/'+path],text=True,timeout=45))
+          deadline=time.monotonic()+170*60
+          while time.monotonic()<deadline:
+              r=api('actions/runs/'+str(run))
+              assert r['head_sha']==source and r['head_repository']['full_name']=='vitorhubdev/cake_wallet_win'
+              assert r['event']=='workflow_dispatch' and r['head_branch']=='pc-v6.5.3-linux-candidate-20261108'
+              jobs=api('actions/runs/'+str(run)+'/jobs?per_page=100')['jobs']
+              selected={j['name']:j for j in jobs if j['name'] in required}
+              failed=[name for name,j in selected.items() if j['status']=='completed' and j['conclusion']!='success']
+              if failed:raise SystemExit('Required wallet/build gates failed: '+','.join(failed))
+              if required.issubset(selected) and all(j['conclusion']=='success' for j in selected.values()):
+                  break
+              if r['status']=='completed':raise SystemExit('Desktop build ended without all required wallet gates')
+              time.sleep(30)
+          else:raise SystemExit('Desktop validation deadline exceeded')
+          current=api('git/ref/heads/pc-v6.5.3-linux-candidate-20261108')['object']['sha']
+          assert current==source,'Candidate was superseded'
+          build=1000+r['run_number'];assert build==1009
+          proof={'source':source,'buildRun':r['html_url'],'buildNumber':build,
+                 'walletAndBuildJobs':{name:{'id':j['id'],'conclusion':j['conclusion']} for name,j in selected.items()},
+                 'runtimeHarness':'783bd28024008870331b76b517d74d06ec2cfd75',
+                 'runtimeNote':'The original container-only noexec/passwd harness was defective. All original wallet/native/installer gates are required above; the full five-distribution runtime gate is executed again below with only the corrected harness. Binaries are not modified.'}
+          pathlib.Path('BUILD_VALIDATION.json').write_text(json.dumps(proof,indent=2)+'\n')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('version=6.5.3\nbuild='+str(build)+'\nsource='+source+'\nrun='+str(run)+'\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-wallet-build-evidence
+          path: BUILD_VALIDATION.json
+          if-no-files-found: error
+          retention-days: 30
+  runtimes:
+    needs: build-evidence
+    uses: vitorhubdev/cake_wallet_win/.github/workflows/pc-linux-runtime.yml@783bd28024008870331b76b517d74d06ec2cfd75
+    with:
+      version: ${{ needs.build-evidence.outputs.version }}
+      build: ${{ needs.build-evidence.outputs.build }}
+      source_commit: ${{ needs.build-evidence.outputs.source }}
+      harness_commit: 783bd28024008870331b76b517d74d06ec2cfd75
+      artifact_run_id: ${{ needs.build-evidence.outputs.run }}
+  publish:
+    needs: [build-evidence, runtimes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE: ${{ needs.build-evidence.outputs.source }}
+      BUILD_RUN: ${{ needs.build-evidence.outputs.run }}
+      PC_BUILD: ${{ needs.build-evidence.outputs.build }}
+    steps:
+      - name: Verify all corrected runtime jobs completed successfully
+        run: |
+          set -euo pipefail
+          gh api "repos/vitorhubdev/cake_wallet_win/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > /tmp/jobs.json
+          python3 - <<'PY'
+          import json,os,pathlib
+          jobs=json.loads(pathlib.Path('/tmp/jobs.json').read_text())['jobs']
+          required={'runtimes / AppImage '+name for name in ['ubuntu-24-04','ubuntu-26-04','fedora-44','fedora-45','archlinux-base-20261101-0-620205']}
+          by_name={j['name']:j for j in jobs}
+          assert required.issubset(by_name),required-by_name.keys()
+          assert all(by_name[name]['conclusion']=='success' for name in required)
+          pathlib.Path('RUNTIME_VALIDATION.json').write_text(json.dumps({'source':os.environ['SOURCE'],'runtimeHarness':'783bd28024008870331b76b517d74d06ec2cfd75','run':'https://github.com/vitorhubdev/cake_wallet_win/actions/runs/'+os.environ['GITHUB_RUN_ID'],'runtimeJobs':{name:{'id':by_name[name]['id'],'conclusion':by_name[name]['conclusion']} for name in sorted(required)},'scope':'Unmodified extracted AppImage, native dependencies, real Secret Service and visible X11 window; not physical FUSE/GPU/Wayland or mainnet payments'},indent=2)+'\n')
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: final-wallet-build-evidence
+          path: .
+      - name: Download only exact matching Windows and Linux distributions
+        run: |
+          set -euo pipefail
+          mkdir dist
+          gh run download "$BUILD_RUN" --repo vitorhubdev/cake_wallet_win --name pc-Windows-distribution --dir dist
+          gh run download "$BUILD_RUN" --repo vitorhubdev/cake_wallet_win --name pc-Linux-distribution --dir dist
+      - name: Verify every distribution checksum and embedded source revision
+        run: |
+          set -euo pipefail
+          cd dist
+          cat SHA256SUMS-windows.txt SHA256SUMS-linux.txt | sort > SHA256SUMS.txt
+          python3 - <<'PY'
+          import json,os,pathlib,re,tarfile,zipfile
+          b=os.environ['PC_BUILD'];source=os.environ['SOURCE']
+          expected={f'CakeWalletPC-Windows-x64-6.5.3-{b}-Setup.exe',f'CakeWalletPC-Windows-x64-6.5.3-{b}.zip',f'CakeWalletPC-Linux-x64-6.5.3-{b}.deb',f'CakeWalletPC-Linux-x64-6.5.3-{b}.tar.gz',f'CakeWalletPC-Linux-x64-6.5.3-{b}.AppImage'}
+          rows=pathlib.Path('SHA256SUMS.txt').read_text().splitlines()
+          assert len(rows)==5 and all(re.fullmatch(r'[0-9a-f]{64}  [A-Za-z0-9_.-]+',row) for row in rows)
+          assert {row.split('  ')[1] for row in rows}==expected
+          for name in expected:assert pathlib.Path(name).is_file() and pathlib.Path(name).stat().st_size>1000000
+          with zipfile.ZipFile(f'CakeWalletPC-Windows-x64-6.5.3-{b}.zip') as archive:
+              files=[i for i in archive.infolist() if i.filename.endswith('build-info.json')]
+              assert len(files)==1 and files[0].file_size<65536
+              win=json.loads(archive.read(files[0]))
+          with tarfile.open(f'CakeWalletPC-Linux-x64-6.5.3-{b}.tar.gz') as archive:
+              files=[i for i in archive if i.name.endswith('/build-info.json') and i.isfile()]
+              assert len(files)==1 and files[0].size<65536
+              linux=json.load(archive.extractfile(files[0]))
+          for info in [win,linux]:
+              assert info['commit']==source
+              assert info['upstreamCommit']=='d803aecf9de21461c7459c974ce5e3f2d92b70ed'
+              assert info['version']=='6.5.3+'+b
+          PY
+          sha256sum --check SHA256SUMS.txt
+      - name: Publish only the validated exact source
+        run: |
+          set -euo pipefail
+          repo=vitorhubdev/cake_wallet_win
+          test "$(gh api repos/$repo/git/ref/heads/pc-v6.5.3-linux-candidate-20261108 --jq .object.sha)" = "$SOURCE"
+          tag="pc-v6.5.3-$PC_BUILD"
+          printf '# Cake Wallet PC 6.5.3 — Monero stability — build %s\n\nCommunity fork, not an official Cake Labs distribution.\n\n' "$PC_BUILD" > release-notes.md
+          gh api "repos/$repo/contents/docs/audits/CAKE_PC_XMR_STABILITY_20261109.md?ref=$SOURCE" --jq .content | base64 --decode >> release-notes.md
+          printf '\n\n## Binary validation\n\nAll required Windows/Linux compilation, wallet regression, native storage, onboarding and installer jobs passed. The unchanged AppImage additionally passed Ubuntu 24.04/26.04, Fedora 44/45 and Arch using the corrected disposable runtime harness. See BUILD_VALIDATION.json and RUNTIME_VALIDATION.json for exact job evidence.\n\nSource: `%s`\nBuild: https://github.com/%s/actions/runs/%s\nFinal validation: https://github.com/%s/actions/runs/%s\n\nWindows installer unsigned. Linux x86-64 requires glibc >= 2.39, libstdc++ >= 13.2, GTK3 and Secret Service. Physical GPU/Wayland/FUSE, hardware wallets and mainnet payments are not certified by these CI checks.\n' "$SOURCE" "$repo" "$BUILD_RUN" "$repo" "$GITHUB_RUN_ID" >> release-notes.md
+          gh release create "$tag" --repo "$repo" --target "$SOURCE" --draft --prerelease --title "Cake Wallet PC 6.5.3 — Monero stability — Windows + Linux — $PC_BUILD" --notes-file release-notes.md
+          gh release upload "$tag" dist/*-Setup.exe dist/*.zip dist/*.deb dist/*.tar.gz dist/*.AppImage dist/SHA256SUMS.txt BUILD_VALIDATION.json RUNTIME_VALIDATION.json --repo "$repo"
+          gh release edit "$tag" --draft=false --repo "$repo"
+          gh release view "$tag" --repo "$repo" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
