@@ -26,6 +26,10 @@ RUN source /etc/os-release; \
       *) echo 'Unsupported CI distribution' >&2; exit 1 ;; \
     esac; \
     mkdir -p /home/pc-ci; chown 1000:1000 /home/pc-ci
+# D-Bus EXTERNAL authentication resolves the process UID through passwd.
+# These entries exist only in disposable test images, never on the user's host.
+RUN getent group 1000 >/dev/null || echo 'pc-ci:x:1000:' >> /etc/group
+RUN getent passwd 1000 >/dev/null || echo 'pc-ci:x:1000:1000:Disposable CI:/home/pc-ci:/bin/bash' >> /etc/passwd
 USER 1000:1000
 ENV HOME=/home/pc-ci LANG=C.UTF-8
 WORKDIR /tmp
