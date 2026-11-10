@@ -1,0 +1,110 @@
+name: Isolated AppImage OpenSSL compatibility trial
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-openssl-runtime-trial.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  failure-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Collect only relevant errors from the three failed runtime probes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir evidence
+          for id in 129530181669 129530181880 129530181981; do
+            gh api --allow-escape-sequences "repos/vitorhubdev/cake_wallet_win/actions/jobs/$id/logs" > "evidence/$id.log"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in sorted(Path('evidence').glob('*.log')):
+              lines=path.read_text(errors='replace').splitlines()
+              print(path.name)
+              print('\n'.join(line for line in lines if 'RuntimeError:' in line or 'not found' in line or 'Traceback' in line)[-6000:])
+          PY
+  trial:
+    name: Host OpenSSL trial ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu-26-04, fedora-45, archlinux-base-20261101-0-620205]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: db9f29dafe6393cfed3e64da8133f709c63864c5
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-Linux-distribution
+          path: dist
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 42717337151
+          github-token: ${{ github.token }}
+      - name: Keep the original artifact unchanged and alter only the disposable extracted fixture
+        id: runtime
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum --check SHA256SUMS-linux.txt)
+          chmod 755 dist/*.AppImage
+          python3 - <<'PY'
+          import json,os,pathlib
+          data=json.loads(pathlib.Path('scripts/pc/linux-runtime-images.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('base='+data[os.environ['IMAGE']]['reference']+'\n')
+          p=pathlib.Path('scripts/pc/runtime/smoke.sh');s=p.read_text()
+          needle='python3 /source/scripts/pc/runtime/verify.py "$private/squashfs-root"'
+          assert s.count(needle)==1
+          before='''python3 - "$private/squashfs-root" <<'PYFIXTURE'
+          from pathlib import Path
+          import json,sys
+          app=Path(sys.argv[1])/'usr/bin'
+          manifest=app/'appimage-build-info.json'
+          data=json.loads(manifest.read_text())
+          names={'libcrypto.so.3','libssl.so.3'}
+          selected=[row for row in data['bundledSystemLibraries'] if row['soname'] in names]
+          assert {row['soname'] for row in selected}==names
+          for name in names:
+              path=app/'lib'/name
+              assert path.is_file()
+              path.unlink()
+          data['bundledSystemLibraries']=[row for row in data['bundledSystemLibraries'] if row['soname'] not in names]
+          data['runtimeFixtureOnly']='Host OpenSSL experiment; not a released or final candidate artifact'
+          manifest.write_text(json.dumps(data))
+          print(json.dumps({'fixtureModified':True,'removedOnly':sorted(names),'releaseValidation':False}))
+          PYFIXTURE
+          '''
+          p.write_text(s.replace(needle,before+needle))
+          PY
+      - name: Build the same pinned distribution runtime
+        env:
+          BASE_IMAGE: ${{ steps.runtime.outputs.base }}
+        run: docker build --pull --build-arg "BASE_IMAGE=$BASE_IMAGE" -t cake-pc-runtime -f scripts/pc/runtime/Dockerfile scripts/pc/runtime
+      - name: Test ELF resolution, real keyring and visible window with host cryptography libraries
+        env:
+          PC_VERSION: '6.5.3'
+          PC_BUILD: '1007'
+          PC_SOURCE_COMMIT: '373e326c74d74ad4e7b90fda135a72fde6fffe58'
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=1g \
+            -e GITHUB_ACTIONS=true -e RUNNER_ENVIRONMENT=github-hosted \
+            -e PC_VERSION -e PC_BUILD -e PC_SOURCE_COMMIT \
+            -v "$PWD:/source:ro" -v "$PWD/dist:/dist:ro" \
+            cake-pc-runtime "/dist/CakeWalletPC-Linux-x64-$PC_VERSION-$PC_BUILD.AppImage" \
+            2>&1 | tee openssl-trial.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openssl-trial-${{ matrix.image }}
+          path: openssl-trial.txt
+          retention-days: 7
+          if-no-files-found: ignore
