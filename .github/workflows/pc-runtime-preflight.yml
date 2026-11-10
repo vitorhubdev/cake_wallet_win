@@ -1,0 +1,71 @@
+name: Preflight Linux desktop runtime dependencies
+on:
+  push:
+    branches: [pc-v653-candidate-import-20261108]
+    paths: [.github/workflows/pc-runtime-preflight.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  runtime:
+    name: Runtime preflight ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu-26-04, fedora-45, archlinux-base-20261101-0-620205]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: db9f29dafe6393cfed3e64da8133f709c63864c5
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pc-Linux-distribution
+          path: dist
+          repository: vitorhubdev/cake_wallet_win
+          run-id: 42717337151
+          github-token: ${{ github.token }}
+      - name: Verify existing Linux package and select immutable runtime image
+        id: runtime
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum --check SHA256SUMS-linux.txt)
+          chmod 755 dist/*.AppImage
+          python3 - <<'PY'
+          import json,os,pathlib
+          data=json.loads(pathlib.Path('scripts/pc/linux-runtime-images.json').read_text())
+          image=data[os.environ['IMAGE']]['reference']
+          assert '@sha256:' in image and '\n' not in image
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write('base='+image+'\n')
+          PY
+      - name: Build target distribution runtime
+        env:
+          BASE_IMAGE: ${{ steps.runtime.outputs.base }}
+        run: docker build --pull --build-arg "BASE_IMAGE=$BASE_IMAGE" -t cake-pc-runtime -f scripts/pc/runtime/Dockerfile scripts/pc/runtime
+      - name: Check packaging and keyring with the older Linux-only validation artifact
+        env:
+          PC_VERSION: '6.5.3'
+          PC_BUILD: '1007'
+          PC_SOURCE_COMMIT: '373e326c74d74ad4e7b90fda135a72fde6fffe58'
+        run: |
+          set -euo pipefail
+          # This is an environment/packaging preflight, NOT validation of the
+          # new XMR code. The final candidate still runs its full five-OS matrix.
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=1g \
+            -e GITHUB_ACTIONS=true -e RUNNER_ENVIRONMENT=github-hosted \
+            -e PC_VERSION -e PC_BUILD -e PC_SOURCE_COMMIT \
+            -v "$PWD:/source:ro" -v "$PWD/dist:/dist:ro" \
+            cake-pc-runtime "/dist/CakeWalletPC-Linux-x64-$PC_VERSION-$PC_BUILD.AppImage" \
+            | tee runtime-preflight.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: runtime-preflight-${{ matrix.image }}
+          path: runtime-preflight.txt
+          if-no-files-found: ignore
+          retention-days: 7
