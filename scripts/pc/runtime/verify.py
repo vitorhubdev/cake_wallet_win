@@ -10,6 +10,10 @@ import sys
 
 root=Path(sys.argv[1]).resolve(strict=True)
 app=root/'usr/bin'
+if os.statvfs(app).f_flag & os.ST_NOEXEC:
+    raise RuntimeError('The disposable test filesystem is noexec; this is not an application ABI failure')
+if not os.access(app/'cake_wallet_pc', os.X_OK):
+    raise RuntimeError('The packaged application has no executable permission')
 info=json.loads((app/'build-info.json').read_text())
 metadata=json.loads((app/'appimage-build-info.json').read_text())
 expected=os.environ['PC_SOURCE_COMMIT']
@@ -37,7 +41,8 @@ for path in app.rglob('*'):
         text=True,capture_output=True,timeout=20)
     if result.returncode or 'not found' in result.stdout+result.stderr:
         missing=re.findall(r'^\s*(\S+)\s+=>\s+not found',result.stdout,re.M)
-        raise RuntimeError('Unresolved ELF dependencies: '+path.name+' '+','.join(missing))
+        raise RuntimeError('Unresolved ELF dependencies: '+path.name+' '+','.join(missing)
+                           +'\n'+result.stdout[-16000:]+'\n'+result.stderr[-4000:])
     count+=1
 os_release=dict(line.split('=',1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
 print(json.dumps({'elfDependencies':'passed','elfFiles':count,
