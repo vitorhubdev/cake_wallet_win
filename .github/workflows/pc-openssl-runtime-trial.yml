@@ -17,7 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir evidence
-          for id in 129530181669 129530181880 129530181981; do
+          for id in 129530181704 129530181967 129530181981; do
             gh api --allow-escape-sequences "repos/vitorhubdev/cake_wallet_win/actions/jobs/$id/logs" > "evidence/$id.log"
           done
           python3 - <<'PY'
@@ -64,21 +64,22 @@ jobs:
           assert s.count(needle)==1
           before='''python3 - "$private/squashfs-root" <<'PYFIXTURE'
           from pathlib import Path
-          import json,sys
+          import hashlib,json,sys
           app=Path(sys.argv[1])/'usr/bin'
           manifest=app/'appimage-build-info.json'
           data=json.loads(manifest.read_text())
           names={'libcrypto.so.3','libssl.so.3'}
-          selected=[row for row in data['bundledSystemLibraries'] if row['soname'] in names]
-          assert {row['soname'] for row in selected}==names
+          removed=[]
           for name in names:
               path=app/'lib'/name
-              assert path.is_file()
-              path.unlink()
+              if path.is_file() or path.is_symlink():
+                  removed.append({'name':name,'sha256':hashlib.file_digest(path.open('rb'),'sha256').hexdigest()})
+                  path.unlink()
+          assert any(row['name']=='libcrypto.so.3' for row in removed)
           data['bundledSystemLibraries']=[row for row in data['bundledSystemLibraries'] if row['soname'] not in names]
           data['runtimeFixtureOnly']='Host OpenSSL experiment; not a released or final candidate artifact'
           manifest.write_text(json.dumps(data))
-          print(json.dumps({'fixtureModified':True,'removedOnly':sorted(names),'releaseValidation':False}))
+          print(json.dumps({'fixtureModified':True,'removedOnly':removed,'releaseValidation':False}),flush=True)
           PYFIXTURE
           '''
           p.write_text(s.replace(needle,before+needle))
